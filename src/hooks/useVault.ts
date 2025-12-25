@@ -64,6 +64,49 @@ const DEMO_ENTRIES: PasswordEntry[] = [
     updatedAt: new Date('2024-02-28'),
     favorite: false,
   },
+  // Team shared entries
+  {
+    id: '6',
+    title: 'GitHub Organization',
+    username: 'org-admin@company.com',
+    password: 'Gh!tHub_0rg_Adm!n_2024',
+    url: 'https://github.com/orgs/company',
+    notes: 'Organization admin account - shared with Engineering team',
+    teamId: 'team-1',
+    folderId: 'team-eng',
+    createdAt: new Date('2024-01-20'),
+    updatedAt: new Date('2024-03-15'),
+    favorite: false,
+    createdBy: 'user-1',
+  },
+  {
+    id: '7',
+    title: 'Vercel Team',
+    username: 'team@company.com',
+    password: 'V3rc3l_T3am_D3pl0y!',
+    url: 'https://vercel.com/company',
+    notes: 'Deployment platform - Engineering team',
+    teamId: 'team-1',
+    folderId: 'team-eng',
+    createdAt: new Date('2024-02-05'),
+    updatedAt: new Date('2024-04-10'),
+    favorite: false,
+    createdBy: 'user-2',
+  },
+  {
+    id: '8',
+    title: 'Twitter / X',
+    username: 'company_official',
+    password: 'Tw!tt3r_Mark3t!ng_2024',
+    url: 'https://twitter.com',
+    notes: 'Official company Twitter - Marketing team',
+    teamId: 'team-2',
+    folderId: 'team-mkt',
+    createdAt: new Date('2024-02-15'),
+    updatedAt: new Date('2024-05-01'),
+    favorite: false,
+    createdBy: 'user-1',
+  },
 ];
 
 const DEMO_FOLDERS: Folder[] = [
@@ -71,6 +114,9 @@ const DEMO_FOLDERS: Folder[] = [
   { id: 'personal', name: 'Personal', icon: 'user' },
   { id: 'finance', name: 'Finance', icon: 'credit-card' },
   { id: 'work', name: 'Work', icon: 'briefcase' },
+  // Team folders
+  { id: 'team-eng', name: 'Engineering Shared', icon: 'users', teamId: 'team-1' },
+  { id: 'team-mkt', name: 'Marketing Shared', icon: 'users', teamId: 'team-2' },
 ];
 
 export function useVault() {
@@ -173,6 +219,22 @@ export function useVault() {
     resetInactivityTimer();
   }, [resetInactivityTimer]);
 
+  const getPersonalEntries = useCallback(() => {
+    return state.entries.filter(e => !e.teamId);
+  }, [state.entries]);
+
+  const getTeamEntries = useCallback((teamId: string) => {
+    return state.entries.filter(e => e.teamId === teamId);
+  }, [state.entries]);
+
+  const getPersonalFolders = useCallback(() => {
+    return state.folders.filter(f => !f.teamId);
+  }, [state.folders]);
+
+  const getTeamFolders = useCallback((teamId: string) => {
+    return state.folders.filter(f => f.teamId === teamId);
+  }, [state.folders]);
+
   // Track user activity
   useEffect(() => {
     if (state.isLocked) return;
@@ -202,5 +264,9 @@ export function useVault() {
     updateEntry,
     deleteEntry,
     toggleFavorite,
+    getPersonalEntries,
+    getTeamEntries,
+    getPersonalFolders,
+    getTeamFolders,
   };
 }

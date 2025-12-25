@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { 
   Shield, 
   Star, 
@@ -10,21 +11,43 @@ import {
   Briefcase,
   Settings,
   Import,
-  FileDown
+  FileDown,
+  Users,
+  ChevronDown,
+  ChevronRight,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  UserPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Folder as FolderType } from '@/types/vault';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Folder as FolderType, Team } from '@/types/vault';
 import { cn } from '@/lib/utils';
 
 interface VaultSidebarProps {
   folders: FolderType[];
+  teams: Team[];
   selectedFolder: string | null;
+  selectedTeam: string | null;
   onSelectFolder: (folderId: string | null) => void;
+  onSelectTeam: (teamId: string | null) => void;
   showFavorites: boolean;
   onToggleFavorites: () => void;
   entryCount: number;
   favoriteCount: number;
+  teamEntryCounts: Record<string, number>;
   onLock: () => void;
+  onCreateTeam: () => void;
+  onEditTeam: (team: Team) => void;
+  onDeleteTeam: (teamId: string) => void;
+  onManageMembers: (team: Team) => void;
 }
 
 const FOLDER_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -32,18 +55,38 @@ const FOLDER_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   user: User,
   'credit-card': CreditCard,
   briefcase: Briefcase,
+  users: Users,
 };
 
 export function VaultSidebar({
   folders,
+  teams,
   selectedFolder,
+  selectedTeam,
   onSelectFolder,
+  onSelectTeam,
   showFavorites,
   onToggleFavorites,
   entryCount,
   favoriteCount,
+  teamEntryCounts,
   onLock,
+  onCreateTeam,
+  onEditTeam,
+  onDeleteTeam,
+  onManageMembers,
 }: VaultSidebarProps) {
+  const [teamsExpanded, setTeamsExpanded] = useState(true);
+  const [foldersExpanded, setFoldersExpanded] = useState(true);
+
+  const personalFolders = folders.filter(f => !f.teamId);
+
+  const handleSelectPersonal = () => {
+    onSelectTeam(null);
+    onSelectFolder(null);
+    if (showFavorites) onToggleFavorites();
+  };
+
   return (
     <aside className="w-64 flex-shrink-0 border-r border-border bg-card/50 flex flex-col">
       {/* Header */}
@@ -64,30 +107,30 @@ export function VaultSidebar({
 
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {/* All items */}
+        {/* All Personal items */}
         <button
-          onClick={() => {
-            onSelectFolder(null);
-            if (showFavorites) onToggleFavorites();
-          }}
+          onClick={handleSelectPersonal}
           className={cn(
             'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-            !selectedFolder && !showFavorites
+            !selectedFolder && !showFavorites && !selectedTeam
               ? 'bg-primary/10 text-primary'
               : 'text-muted-foreground hover:bg-accent hover:text-foreground'
           )}
         >
           <Shield className="w-4 h-4" />
-          <span className="flex-1 text-left">All Items</span>
+          <span className="flex-1 text-left">My Vault</span>
           <span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{entryCount}</span>
         </button>
 
         {/* Favorites */}
         <button
-          onClick={onToggleFavorites}
+          onClick={() => {
+            onSelectTeam(null);
+            onToggleFavorites();
+          }}
           className={cn(
             'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-            showFavorites
+            showFavorites && !selectedTeam
               ? 'bg-primary/10 text-primary'
               : 'text-muted-foreground hover:bg-accent hover:text-foreground'
           )}
@@ -97,42 +140,144 @@ export function VaultSidebar({
           <span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{favoriteCount}</span>
         </button>
 
-        {/* Folders section */}
+        {/* Personal Folders section */}
         <div className="pt-4">
-          <div className="flex items-center justify-between px-3 mb-2">
+          <button
+            onClick={() => setFoldersExpanded(!foldersExpanded)}
+            className="w-full flex items-center justify-between px-3 mb-2 group"
+          >
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Folders
             </span>
-            <button className="p-1 rounded hover:bg-accent transition-colors">
+            {foldersExpanded ? (
+              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+            )}
+          </button>
+
+          {foldersExpanded && (
+            <div className="space-y-1">
+              {personalFolders.map((folder) => {
+                const Icon = FOLDER_ICONS[folder.icon || ''] || Folder;
+                const isSelected = selectedFolder === folder.id && !showFavorites && !selectedTeam;
+                
+                return (
+                  <button
+                    key={folder.id}
+                    onClick={() => {
+                      onSelectTeam(null);
+                      onSelectFolder(folder.id);
+                      if (showFavorites) onToggleFavorites();
+                    }}
+                    className={cn(
+                      'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                      isSelected
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                    )}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span className="flex-1 text-left">{folder.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Teams section */}
+        <div className="pt-4">
+          <div className="flex items-center justify-between px-3 mb-2">
+            <button
+              onClick={() => setTeamsExpanded(!teamsExpanded)}
+              className="flex items-center gap-1"
+            >
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Teams
+              </span>
+              {teamsExpanded ? (
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
+            </button>
+            <button 
+              onClick={onCreateTeam}
+              className="p-1 rounded hover:bg-accent transition-colors"
+            >
               <Plus className="w-3.5 h-3.5 text-muted-foreground" />
             </button>
           </div>
 
-          <div className="space-y-1">
-            {folders.map((folder) => {
-              const Icon = FOLDER_ICONS[folder.icon || ''] || Folder;
-              const isSelected = selectedFolder === folder.id && !showFavorites;
-              
-              return (
-                <button
-                  key={folder.id}
-                  onClick={() => {
-                    onSelectFolder(folder.id);
-                    if (showFavorites) onToggleFavorites();
-                  }}
-                  className={cn(
-                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                    isSelected
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                  )}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span className="flex-1 text-left">{folder.name}</span>
-                </button>
-              );
-            })}
-          </div>
+          {teamsExpanded && (
+            <div className="space-y-1">
+              {teams.map((team) => {
+                const isSelected = selectedTeam === team.id;
+                const entryCount = teamEntryCounts[team.id] || 0;
+                
+                return (
+                  <div key={team.id} className="group relative">
+                    <button
+                      onClick={() => {
+                        onSelectTeam(team.id);
+                        onSelectFolder(null);
+                        if (showFavorites) onToggleFavorites();
+                      }}
+                      className={cn(
+                        'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                        isSelected
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                      )}
+                    >
+                      <Users className="w-4 h-4" />
+                      <span className="flex-1 text-left truncate">{team.name}</span>
+                      <span className="text-xs bg-secondary px-2 py-0.5 rounded-full">
+                        {entryCount}
+                      </span>
+                    </button>
+                    
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded opacity-0 group-hover:opacity-100 hover:bg-accent transition-all">
+                          <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => onManageMembers(team)}>
+                          <UserPlus className="w-4 h-4 mr-2" />
+                          Manage Members
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onEditTeam(team)}>
+                          <Pencil className="w-4 h-4 mr-2" />
+                          Edit Team
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          onClick={() => onDeleteTeam(team.id)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete Team
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                );
+              })}
+
+              {teams.length === 0 && (
+                <div className="px-3 py-4 text-center">
+                  <p className="text-xs text-muted-foreground mb-2">No teams yet</p>
+                  <Button variant="outline" size="sm" onClick={onCreateTeam}>
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Create Team
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </nav>
 
