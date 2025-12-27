@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { 
-  Shield, 
+  Shield,
+  ShieldCheck,
   Star, 
   Folder, 
   Plus, 
@@ -36,8 +37,10 @@ interface VaultSidebarProps {
   teams: Team[];
   selectedFolder: string | null;
   selectedTeam: string | null;
+  showSecurity: boolean;
   onSelectFolder: (folderId: string | null) => void;
   onSelectTeam: (teamId: string | null) => void;
+  onToggleSecurity: () => void;
   showFavorites: boolean;
   onToggleFavorites: () => void;
   entryCount: number;
@@ -63,8 +66,10 @@ export function VaultSidebar({
   teams,
   selectedFolder,
   selectedTeam,
+  showSecurity,
   onSelectFolder,
   onSelectTeam,
+  onToggleSecurity,
   showFavorites,
   onToggleFavorites,
   entryCount,
@@ -85,6 +90,7 @@ export function VaultSidebar({
     onSelectTeam(null);
     onSelectFolder(null);
     if (showFavorites) onToggleFavorites();
+    if (showSecurity) onToggleSecurity();
   };
 
   return (
@@ -126,11 +132,13 @@ export function VaultSidebar({
         <button
           onClick={() => {
             onSelectTeam(null);
-            onToggleFavorites();
+            onSelectFolder(null);
+            if (showSecurity) onToggleSecurity();
+            if (!showFavorites) onToggleFavorites();
           }}
           className={cn(
             'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-            showFavorites && !selectedTeam
+            showFavorites && !selectedTeam && !showSecurity
               ? 'bg-primary/10 text-primary'
               : 'text-muted-foreground hover:bg-accent hover:text-foreground'
           )}
@@ -138,6 +146,25 @@ export function VaultSidebar({
           <Star className="w-4 h-4" />
           <span className="flex-1 text-left">Favorites</span>
           <span className="text-xs bg-secondary px-2 py-0.5 rounded-full">{favoriteCount}</span>
+        </button>
+
+        {/* Security Dashboard */}
+        <button
+          onClick={() => {
+            onSelectTeam(null);
+            onSelectFolder(null);
+            if (showFavorites) onToggleFavorites();
+            if (!showSecurity) onToggleSecurity();
+          }}
+          className={cn(
+            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+            showSecurity && !selectedTeam
+              ? 'bg-primary/10 text-primary'
+              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+          )}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span className="flex-1 text-left">Security</span>
         </button>
 
         {/* Personal Folders section */}
