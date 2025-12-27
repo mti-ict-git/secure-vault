@@ -219,6 +219,36 @@ export function useVault() {
     resetInactivityTimer();
   }, [resetInactivityTimer]);
 
+  const importEntries = useCallback((
+    newEntries: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>[],
+    newFolders: Omit<Folder, 'id'>[]
+  ) => {
+    // Add folders with generated IDs
+    const folderIdMap = new Map<string, string>();
+    const foldersWithIds: Folder[] = newFolders.map(folder => {
+      const id = crypto.randomUUID();
+      if (folder.name) {
+        folderIdMap.set(folder.name, id);
+      }
+      return { ...folder, id };
+    });
+
+    // Add entries with generated IDs, mapping folder references
+    const entriesWithIds: PasswordEntry[] = newEntries.map(entry => ({
+      ...entry,
+      id: crypto.randomUUID(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
+
+    setState(prev => ({
+      ...prev,
+      entries: [...prev.entries, ...entriesWithIds],
+      folders: [...prev.folders, ...foldersWithIds],
+    }));
+    resetInactivityTimer();
+  }, [resetInactivityTimer]);
+
   const getPersonalEntries = useCallback(() => {
     return state.entries.filter(e => !e.teamId);
   }, [state.entries]);
@@ -264,6 +294,7 @@ export function useVault() {
     updateEntry,
     deleteEntry,
     toggleFavorite,
+    importEntries,
     getPersonalEntries,
     getTeamEntries,
     getPersonalFolders,

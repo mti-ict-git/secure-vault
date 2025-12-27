@@ -15,6 +15,7 @@ const Index = () => {
     updateEntry,
     deleteEntry,
     toggleFavorite,
+    importEntries,
   } = useVault();
 
   const {
@@ -56,6 +57,7 @@ const Index = () => {
       onUpdateMemberRole={updateMemberRole}
       onCancelInvite={cancelInvite}
       getTeamInvites={getTeamInvites}
+      onImportEntries={importEntries}
     />
   );
 };

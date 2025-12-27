@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Plus, Filter, SortAsc, Users } from 'lucide-react';
+import { Search, Plus, Filter, SortAsc, Users, FileKey } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { VaultSidebar } from '@/components/VaultSidebar';
@@ -7,6 +7,7 @@ import { PasswordEntryCard } from '@/components/PasswordEntry';
 import { AddEntryDialog } from '@/components/AddEntryDialog';
 import { CreateTeamDialog } from '@/components/CreateTeamDialog';
 import { TeamMembersDialog } from '@/components/TeamMembersDialog';
+import { KdbxImportExportDialog } from '@/components/KdbxImportExportDialog';
 import { PasswordEntry, Folder, Team } from '@/types/vault';
 import {
   AlertDialog,
@@ -38,6 +39,8 @@ interface VaultDashboardProps {
   onUpdateMemberRole: (teamId: string, memberId: string, role: 'owner' | 'admin' | 'member') => void;
   onCancelInvite: (inviteId: string) => void;
   getTeamInvites: (teamId: string) => any[];
+  // Import/Export
+  onImportEntries: (entries: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>[], folders: Omit<Folder, 'id'>[]) => void;
 }
 
 export function VaultDashboard({
@@ -57,6 +60,7 @@ export function VaultDashboard({
   onUpdateMemberRole,
   onCancelInvite,
   getTeamInvites,
+  onImportEntries,
 }: VaultDashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
@@ -65,6 +69,7 @@ export function VaultDashboard({
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<PasswordEntry | null>(null);
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
+  const [kdbxDialogOpen, setKdbxDialogOpen] = useState(false);
   
   // Team dialogs
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
@@ -212,6 +217,9 @@ export function VaultDashboard({
             </div>
             
             <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={() => setKdbxDialogOpen(true)} title="Import/Export KeePass">
+                <FileKey className="w-4 h-4" />
+              </Button>
               <Button variant="outline" size="icon">
                 <Filter className="w-4 h-4" />
               </Button>
@@ -391,6 +399,18 @@ export function VaultDashboard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* KeePass Import/Export Dialog */}
+      <KdbxImportExportDialog
+        open={kdbxDialogOpen}
+        onOpenChange={setKdbxDialogOpen}
+        entries={entries}
+        folders={folders}
+        onImport={(importedEntries, importedFolders) => {
+          onImportEntries(importedEntries, importedFolders);
+          toast.success(`Imported ${importedEntries.length} entries`);
+        }}
+      />
     </div>
   );
 }
