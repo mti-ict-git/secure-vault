@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Plus, Filter, SortAsc, Users, FileKey } from 'lucide-react';
+import { Search, Plus, Filter, SortAsc, Users, FileKey, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { VaultSidebar } from '@/components/VaultSidebar';
@@ -8,6 +8,7 @@ import { AddEntryDialog } from '@/components/AddEntryDialog';
 import { CreateTeamDialog } from '@/components/CreateTeamDialog';
 import { TeamMembersDialog } from '@/components/TeamMembersDialog';
 import { KdbxImportExportDialog } from '@/components/KdbxImportExportDialog';
+import { SecurityDashboard } from '@/components/SecurityDashboard';
 import { PasswordEntry, Folder, Team } from '@/types/vault';
 import {
   AlertDialog,
@@ -66,6 +67,7 @@ export function VaultDashboard({
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
+  const [showSecurity, setShowSecurity] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<PasswordEntry | null>(null);
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
@@ -165,6 +167,7 @@ export function VaultDashboard({
   };
 
   const getCurrentTitle = () => {
+    if (showSecurity) return 'Security Dashboard';
     if (selectedTeam) {
       const team = teams.find(t => t.id === selectedTeam);
       return team?.name || 'Team';
@@ -186,8 +189,10 @@ export function VaultDashboard({
         teams={teams}
         selectedFolder={selectedFolder}
         selectedTeam={selectedTeam}
+        showSecurity={showSecurity}
         onSelectFolder={setSelectedFolder}
         onSelectTeam={setSelectedTeam}
+        onToggleSecurity={() => setShowSecurity(!showSecurity)}
         showFavorites={showFavorites}
         onToggleFavorites={() => setShowFavorites(!showFavorites)}
         entryCount={personalEntries.length}
@@ -237,82 +242,100 @@ export function VaultDashboard({
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="max-w-4xl mx-auto">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                {selectedTeam && <Users className="w-5 h-5 text-primary" />}
-                <h2 className="text-xl font-semibold text-foreground">{getCurrentTitle()}</h2>
-                {currentTeam && (
-                  <span className="text-sm text-muted-foreground">
-                    {currentTeam.members.length} member{currentTeam.members.length !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
-              <span className="text-sm text-muted-foreground">
-                {filteredEntries.length} {filteredEntries.length === 1 ? 'item' : 'items'}
-              </span>
-            </div>
-
-            {/* Team info banner */}
-            {selectedTeam && currentTeam && (
-              <div className="mb-6 p-4 bg-primary/5 border border-primary/20 rounded-xl">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">
-                      {currentTeam.description || 'Shared passwords for this team'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      🔐 Encrypted with team key • All members can access these passwords
-                    </p>
-                  </div>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setMembersTeam(currentTeam)}
-                  >
-                    <Users className="w-4 h-4 mr-1" />
-                    Manage
-                  </Button>
+            {showSecurity ? (
+              <>
+                <div className="flex items-center gap-3 mb-6">
+                  <ShieldCheck className="w-5 h-5 text-primary" />
+                  <h2 className="text-xl font-semibold text-foreground">{getCurrentTitle()}</h2>
                 </div>
-              </div>
-            )}
-
-            {filteredEntries.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 rounded-2xl bg-muted mx-auto mb-4 flex items-center justify-center">
-                  {selectedTeam ? <Users className="w-8 h-8 text-muted-foreground" /> : <Search className="w-8 h-8 text-muted-foreground" />}
-                </div>
-                <h3 className="text-lg font-medium text-foreground mb-2">
-                  {searchQuery ? 'No results found' : selectedTeam ? 'No shared passwords yet' : 'No entries yet'}
-                </h3>
-                <p className="text-muted-foreground mb-4">
-                  {searchQuery
-                    ? 'Try adjusting your search query'
-                    : selectedTeam 
-                      ? 'Share passwords with your team members'
-                      : 'Add your first password entry to get started'}
-                </p>
-                {!searchQuery && (
-                  <Button onClick={() => setAddDialogOpen(true)}>
-                    <Plus className="w-4 h-4" />
-                    {selectedTeam ? 'Share Password' : 'Add Entry'}
-                  </Button>
-                )}
-              </div>
+                <SecurityDashboard 
+                  entries={entries} 
+                  onEditEntry={(entry) => {
+                    setEditEntry(entry);
+                    setAddDialogOpen(true);
+                  }}
+                />
+              </>
             ) : (
-              <div className="space-y-3">
-                {filteredEntries.map((entry) => (
-                  <PasswordEntryCard
-                    key={entry.id}
-                    entry={entry}
-                    onToggleFavorite={onToggleFavorite}
-                    onEdit={(e) => {
-                      setEditEntry(e);
-                      setAddDialogOpen(true);
-                    }}
-                    onDelete={(id) => setDeleteEntryId(id)}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    {selectedTeam && <Users className="w-5 h-5 text-primary" />}
+                    <h2 className="text-xl font-semibold text-foreground">{getCurrentTitle()}</h2>
+                    {currentTeam && (
+                      <span className="text-sm text-muted-foreground">
+                        {currentTeam.members.length} member{currentTeam.members.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-sm text-muted-foreground">
+                    {filteredEntries.length} {filteredEntries.length === 1 ? 'item' : 'items'}
+                  </span>
+                </div>
+
+                {/* Team info banner */}
+                {selectedTeam && currentTeam && (
+                  <div className="mb-6 p-4 bg-primary/5 border border-primary/20 rounded-xl">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">
+                          {currentTeam.description || 'Shared passwords for this team'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          🔐 Encrypted with team key • All members can access these passwords
+                        </p>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setMembersTeam(currentTeam)}
+                      >
+                        <Users className="w-4 h-4 mr-1" />
+                        Manage
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {filteredEntries.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 rounded-2xl bg-muted mx-auto mb-4 flex items-center justify-center">
+                      {selectedTeam ? <Users className="w-8 h-8 text-muted-foreground" /> : <Search className="w-8 h-8 text-muted-foreground" />}
+                    </div>
+                    <h3 className="text-lg font-medium text-foreground mb-2">
+                      {searchQuery ? 'No results found' : selectedTeam ? 'No shared passwords yet' : 'No entries yet'}
+                    </h3>
+                    <p className="text-muted-foreground mb-4">
+                      {searchQuery
+                        ? 'Try adjusting your search query'
+                        : selectedTeam 
+                          ? 'Share passwords with your team members'
+                          : 'Add your first password entry to get started'}
+                    </p>
+                    {!searchQuery && (
+                      <Button onClick={() => setAddDialogOpen(true)}>
+                        <Plus className="w-4 h-4" />
+                        {selectedTeam ? 'Share Password' : 'Add Entry'}
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredEntries.map((entry) => (
+                      <PasswordEntryCard
+                        key={entry.id}
+                        entry={entry}
+                        onToggleFavorite={onToggleFavorite}
+                        onEdit={(e) => {
+                          setEditEntry(e);
+                          setAddDialogOpen(true);
+                        }}
+                        onDelete={(id) => setDeleteEntryId(id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
