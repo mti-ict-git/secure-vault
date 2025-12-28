@@ -132,3 +132,6 @@
 - Added docker-compose.yml to run both services with DB upload storage.
 - Added nginx reverse proxy to route /api to backend and serve SPA.
 
+## 2025-12-28 23:08:11 +08:00
+- Ignored .env files and removed tracked .env from git index.
+
