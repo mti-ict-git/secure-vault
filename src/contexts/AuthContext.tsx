@@ -20,12 +20,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const t = localStorage.getItem("sv.jwt");
-    if (t) {
-      setJwt(t);
-      get<{ id?: string }>("/me").then((res) => {
-        if (res.ok && res.body?.id) setUser({ id: res.body.id });
-      });
-    }
+    if (!t) return;
+
+    get<{ id?: string }>("/me").then((res) => {
+      if (res.ok && res.body?.id) {
+        setJwt(t);
+        setUser({ id: res.body.id });
+        return;
+      }
+      doLogout();
+      setJwt(null);
+      setUser(null);
+    });
   }, []);
 
   const login = async (username: string, password: string) => {
