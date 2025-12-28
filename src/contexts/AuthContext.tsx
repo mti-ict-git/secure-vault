@@ -1,24 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { loginLdap, logout as doLogout } from "@/lib/auth";
 import { get } from "@/lib/api";
-
-type AuthUser = { id: string; display_name?: string } | null;
-
-type AuthContextValue = {
-  user: AuthUser;
-  jwt: string | null;
-  isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-  logout: () => void;
-};
-
-const AuthContext = createContext<AuthContextValue>({
-  user: null,
-  jwt: null,
-  isAuthenticated: false,
-  login: async () => ({ ok: false }),
-  logout: () => {},
-});
+import { AuthContext, type AuthContextValue, type AuthUser } from "@/contexts/auth";
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [jwt, setJwt] = useState<string | null>(null);
@@ -36,12 +19,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const login = async (username: string, password: string) => {
     const r = await loginLdap(username, password);
-    if (r.ok) {
-      setJwt(r.token);
-      setUser(r.user || null);
-      return { ok: true };
-    }
-    return { ok: false, error: r.error };
+    if (r.ok === false) return { ok: false, error: r.error };
+    setJwt(r.token);
+    setUser(r.user || null);
+    return { ok: true };
   };
 
   const logout = () => {
@@ -50,7 +31,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setUser(null);
   };
 
-  const value = useMemo(
+  const value: AuthContextValue = useMemo(
     () => ({
       user,
       jwt,
@@ -63,5 +44,3 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
-
-export const useAuth = () => useContext(AuthContext);

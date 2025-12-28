@@ -9,7 +9,7 @@ import { CreateTeamDialog } from '@/components/CreateTeamDialog';
 import { TeamMembersDialog } from '@/components/TeamMembersDialog';
 import { KdbxImportExportDialog } from '@/components/KdbxImportExportDialog';
 import { SecurityDashboard } from '@/components/SecurityDashboard';
-import { PasswordEntry, Folder, Team } from '@/types/vault';
+import { PasswordEntry, Folder, Team, TeamInvite } from '@/types/vault';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,7 +39,7 @@ interface VaultDashboardProps {
   onRemoveMember: (teamId: string, memberId: string) => void;
   onUpdateMemberRole: (teamId: string, memberId: string, role: 'owner' | 'admin' | 'member') => void;
   onCancelInvite: (inviteId: string) => void;
-  getTeamInvites: (teamId: string) => any[];
+  getTeamInvites: (teamId: string) => TeamInvite[];
   // Import/Export
   onImportEntries: (entries: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>[], folders: Omit<Folder, 'id'>[]) => void;
 }
