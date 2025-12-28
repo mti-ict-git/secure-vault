@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Plus, Filter, SortAsc, Users, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X } from 'lucide-react';
+import { Search, Plus, Filter, SortAsc, Users, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X, ListChecks } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { VaultSidebar } from '@/components/VaultSidebar';
@@ -247,6 +247,11 @@ export function VaultDashboard({
   );
   const selectedCount = selectedEntries.length;
 
+  const allFilteredSelected = useMemo(() => {
+    if (filteredEntries.length === 0) return false;
+    return filteredEntries.every((e) => selectedEntryIds.has(e.id));
+  }, [filteredEntries, selectedEntryIds]);
+
   const setEntrySelected = (id: string, selected: boolean) => {
     setSelectedEntryIds((prev) => {
       const next = new Set(prev);
@@ -257,6 +262,15 @@ export function VaultDashboard({
   };
 
   const clearSelection = () => setSelectedEntryIds(new Set());
+
+  const toggleSelectAllFiltered = () => {
+    if (filteredEntries.length === 0) return;
+    if (allFilteredSelected) {
+      clearSelection();
+      return;
+    }
+    setSelectedEntryIds(new Set(filteredEntries.map((e) => e.id)));
+  };
 
   const downloadText = (text: string, filename: string) => {
     const bytes = new TextEncoder().encode(text);
@@ -464,9 +478,17 @@ export function VaultDashboard({
                       </span>
                     )}
                   </div>
-                  <span className="text-sm text-muted-foreground">
-                    {filteredEntries.length} {filteredEntries.length === 1 ? 'item' : 'items'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {filteredEntries.length > 0 && (
+                      <Button variant="outline" size="sm" onClick={toggleSelectAllFiltered}>
+                        <ListChecks className="w-4 h-4" />
+                        {allFilteredSelected ? 'Deselect all' : 'Select all'}
+                      </Button>
+                    )}
+                    <span className="text-sm text-muted-foreground">
+                      {filteredEntries.length} {filteredEntries.length === 1 ? 'item' : 'items'}
+                    </span>
+                  </div>
                 </div>
 
                 {selectedCount > 0 && (

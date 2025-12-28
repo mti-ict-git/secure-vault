@@ -114,3 +114,16 @@
 ## 2025-12-28 22:21:26
 - Fix CSV export regex to avoid invalid Unicode escape.
 
+## 2025-12-28 22:24:40
+- Add Select all / Deselect all button for current filtered list.
+
+## 2025-12-28 22:46:53 +08:00
+- Added DB-backed storage option for vault blobs.
+- Added migration to store blob binary data in the database.
+- Added and ran a script to migrate existing filesystem blobs into the database.
+- Fixed SQL migration execution by avoiding compile-time column references.
+- Fixed lint error in the blob migration script.
+
+## 2025-12-28 22:53:09 +08:00
+- Added a report mode to verify all blobs are DB-backed before cleanup.
+

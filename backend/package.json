@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "migrate": "tsx scripts/migrate.ts",
+    "migrate:blobs:to-db": "tsx scripts/migrate-blobs-to-db.ts",
     "test:api": "tsx scripts/test-api.ts"
   },
   "dependencies": {

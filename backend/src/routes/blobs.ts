@@ -2,12 +2,11 @@ import type { FastifyInstance } from "fastify";
 import multipart from "@fastify/multipart";
 import type { Multipart, MultipartFile } from "@fastify/multipart";
 import type { FastifyRequest } from "fastify";
-import { insertBlob, listBlobs, getBlob } from "../repo/blobs.js";
+import { insertBlob, listBlobs, getBlob, getBlobData } from "../repo/blobs.js";
 import { writeAudit } from "../repo/audit.js";
 import { config } from "../config.js";
 import { createReadStream } from "fs";
-import { join } from "path";
-import { FileSystemAdapter } from "../storage/adapter.js";
+import { DatabaseAdapter, FileSystemAdapter } from "../storage/adapter.js";
 import { publishSyncEvent, uid } from "../state/store.js";
 import { getVaultAccessForUser } from "../repo/vaults.js";
 
@@ -60,13 +59,16 @@ export const blobRoutes = async (app: FastifyInstance) => {
         return reply.status(415).send({ error: "unsupported_type" });
       }
     }
-    const storage = new FileSystemAdapter();
     const blobId = uid();
+    const storage = config.uploads.storage === "db" ? new DatabaseAdapter() : new FileSystemAdapter();
+    const storageKind = config.uploads.storage;
     const dest = await storage.put(vaultId, blobId, filePart.file);
     const id = await insertBlob(
+      blobId,
       vaultId,
       meta.blob_type || "snapshot",
       meta.content_sha256 || "",
+      storageKind,
       dest,
       meta.size_bytes || 0,
       userId
@@ -100,7 +102,15 @@ export const blobRoutes = async (app: FastifyInstance) => {
     const access = await getVaultAccessForUser(blobVaultId, userId);
     if (!access) return reply.status(403).send({ error: "forbidden" });
     reply.header("Content-Type", "application/octet-stream");
-    const rs = createReadStream(blob.storage_ref);
+    const storageRef = (blob as { storage_ref?: string | null }).storage_ref;
+    const storageKind = (blob as { storage_kind?: string | null }).storage_kind;
+    if (storageKind === "db" || (storageRef || "").startsWith("db:")) {
+      const data = await getBlobData(blobId);
+      if (!data) return reply.status(404).send({ error: "not_found" });
+      return reply.send(data);
+    }
+    if (!storageRef) return reply.status(404).send({ error: "not_found" });
+    const rs = createReadStream(storageRef);
     return reply.send(rs);
   });
 };

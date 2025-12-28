@@ -15,6 +15,12 @@ const toNumber = (v: string | undefined, def: number) => {
   return Number.isFinite(n) ? n : def;
 };
 
+const toUploadStorage = (v: string | undefined, def: "fs" | "db"): "fs" | "db" => {
+  if (!v) return def;
+  const s = v.toLowerCase();
+  return s === "db" ? "db" : "fs";
+};
+
 const logFile = process.env.LOG_FILE || "logs/app.log";
 mkdirSync(dirname(join(process.cwd(), logFile)), { recursive: true });
 createWriteStream(join(process.cwd(), logFile), { flags: "a" });
@@ -36,6 +42,7 @@ export const config = {
   },
   uploads: {
     maxSize: toNumber(process.env.UPLOAD_MAX_SIZE, 10 * 1024 * 1024),
+    storage: toUploadStorage(process.env.UPLOAD_STORAGE, "fs"),
     allowed: (process.env.UPLOAD_ALLOWED_TYPES ||
       "image/jpeg,image/png,application/pdf,application/octet-stream,application/json")
       .split(",")
