@@ -31,10 +31,38 @@ export function useVault() {
   });
   
   const [needsKeySetup, setNeedsKeySetup] = useState(false);
+  const [isCheckingKeys, setIsCheckingKeys] = useState(true); // Start with loading state
   const [vaults, setVaults] = useState<VaultRecord[]>([]);
   const [currentVaultId, setCurrentVaultId] = useState<string | null>(null);
   const keysRef = useRef<VaultKeys | null>(null);
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Check if user has keys registered on mount
+  useEffect(() => {
+    const checkKeys = async () => {
+      const token = localStorage.getItem('sv.jwt');
+      if (!token) {
+        setIsCheckingKeys(false);
+        return;
+      }
+
+      try {
+        const res = await get<{ has_keys: boolean }>('/keys/me');
+        if (res.ok) {
+          setNeedsKeySetup(res.body?.has_keys === false);
+        } else if (res.status === 401) {
+          // Not authenticated, will be handled by login flow
+          setNeedsKeySetup(false);
+        }
+      } catch (err) {
+        console.error('Failed to check keys:', err);
+      } finally {
+        setIsCheckingKeys(false);
+      }
+    };
+
+    checkKeys();
+  }, []);
 
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimer.current) {
@@ -408,6 +436,7 @@ export function useVault() {
   return {
     ...state,
     needsKeySetup,
+    isCheckingKeys,
     currentVaultId,
     vaults,
     unlock,

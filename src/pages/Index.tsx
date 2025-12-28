@@ -4,6 +4,7 @@ import { VaultDashboard } from '@/components/VaultDashboard';
 import { KeySetupDialog } from '@/components/KeySetupDialog';
 import { useVault } from '@/hooks/useVault';
 import { useTeams } from '@/hooks/useTeams';
+import { Loader2, Shield } from 'lucide-react';
 
 const Index = () => {
   const {
@@ -11,6 +12,7 @@ const Index = () => {
     entries,
     folders,
     needsKeySetup,
+    isCheckingKeys,
     unlock,
     lock,
     addEntry,
@@ -38,10 +40,25 @@ const Index = () => {
     document.documentElement.classList.add('dark');
   }, []);
 
+  // Show loading while checking if user has keys
+  if (isCheckingKeys) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+          <Shield className="w-8 h-8 text-primary" />
+        </div>
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <p className="mt-4 text-sm text-muted-foreground">Loading vault...</p>
+      </div>
+    );
+  }
+
+  // New user: show key setup dialog to CREATE a master password
   if (needsKeySetup) {
     return <KeySetupDialog open={true} onComplete={onKeySetupComplete} />;
   }
 
+  // Existing user: show unlock screen to ENTER existing master password
   if (isLocked) {
     return <UnlockScreen onUnlock={unlock} />;
   }
