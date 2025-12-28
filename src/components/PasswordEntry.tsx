@@ -11,6 +11,7 @@ import {
   Check
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -25,12 +26,14 @@ import { toast } from 'sonner';
 
 interface PasswordEntryProps {
   entry: PasswordEntryType;
+  selected: boolean;
+  onSelectedChange: (selected: boolean) => void;
   onToggleFavorite: (id: string) => void;
   onEdit: (entry: PasswordEntryType) => void;
   onDelete: (id: string) => void;
 }
 
-export function PasswordEntryCard({ entry, onToggleFavorite, onEdit, onDelete }: PasswordEntryProps) {
+export function PasswordEntryCard({ entry, selected, onSelectedChange, onToggleFavorite, onEdit, onDelete }: PasswordEntryProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [copied, setCopied] = useState<'password' | 'username' | null>(null);
 
@@ -63,6 +66,14 @@ export function PasswordEntryCard({ entry, onToggleFavorite, onEdit, onDelete }:
   return (
     <div className="vault-card p-4 animate-fade-in">
       <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 pt-1">
+          <Checkbox
+            checked={selected}
+            onCheckedChange={(checked) => onSelectedChange(checked === true)}
+            aria-label={selected ? 'Deselect entry' : 'Select entry'}
+          />
+        </div>
+
         {/* Icon */}
         <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
           {favicon ? (

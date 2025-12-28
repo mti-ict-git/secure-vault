@@ -21,6 +21,8 @@ const Index = () => {
     deleteEntry,
     toggleFavorite,
     importEntries,
+    addFolder,
+    deleteFolder,
     onKeySetupComplete,
   } = useVault();
 
@@ -74,6 +76,8 @@ const Index = () => {
       onUpdateEntry={updateEntry}
       onDeleteEntry={deleteEntry}
       onToggleFavorite={toggleFavorite}
+      onAddFolder={addFolder}
+      onDeleteFolder={deleteFolder}
       onCreateTeam={createTeam}
       onUpdateTeam={updateTeam}
       onDeleteTeam={deleteTeam}

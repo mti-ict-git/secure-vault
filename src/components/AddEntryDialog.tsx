@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import { 
-  Plus, 
   Eye, 
   EyeOff, 
   RefreshCw, 
-  X,
   Globe,
   User,
   Key,
-  FileText
+  FileText,
+  Folder
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,8 +19,15 @@ import {
   DialogTitle,
   DialogFooter
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { PasswordStrengthIndicator } from '@/components/PasswordStrengthIndicator';
-import { PasswordEntry } from '@/types/vault';
+import { Folder as FolderType, PasswordEntry } from '@/types/vault';
 import { generatePassword, evaluatePasswordStrength } from '@/lib/password-utils';
 import { cn } from '@/lib/utils';
 
@@ -30,15 +36,59 @@ interface AddEntryDialogProps {
   onOpenChange: (open: boolean) => void;
   onSave: (entry: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>) => void;
   editEntry?: PasswordEntry | null;
+  folders: FolderType[];
+  defaultFolderId: string | null;
 }
 
-export function AddEntryDialog({ open, onOpenChange, onSave, editEntry }: AddEntryDialogProps) {
+type FolderOption = { id: string; name: string; depth: number };
+
+const buildFolderOptions = (folders: FolderType[]): FolderOption[] => {
+  const foldersById = new Map<string, FolderType>();
+  const childrenByParent = new Map<string, FolderType[]>();
+
+  for (const folder of folders) {
+    foldersById.set(folder.id, folder);
+  }
+
+  for (const folder of folders) {
+    const parentId = folder.parentId;
+    if (!parentId || !foldersById.has(parentId)) continue;
+    const children = childrenByParent.get(parentId) ?? [];
+    children.push(folder);
+    childrenByParent.set(parentId, children);
+  }
+
+  const roots = folders
+    .filter((f) => !f.parentId || !foldersById.has(f.parentId))
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const result: FolderOption[] = [];
+  const walk = (node: FolderType, depth: number) => {
+    result.push({ id: node.id, name: node.name, depth });
+    const children = (childrenByParent.get(node.id) ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
+    for (const child of children) walk(child, depth + 1);
+  };
+
+  for (const root of roots) walk(root, 0);
+  return result;
+};
+
+export function AddEntryDialog({
+  open,
+  onOpenChange,
+  onSave,
+  editEntry,
+  folders,
+  defaultFolderId,
+}: AddEntryDialogProps) {
   const [title, setTitle] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [url, setUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [folderId, setFolderId] = useState<string | null>(defaultFolderId);
 
   const passwordStrength = evaluatePasswordStrength(password);
 
@@ -49,14 +99,16 @@ export function AddEntryDialog({ open, onOpenChange, onSave, editEntry }: AddEnt
       setPassword(editEntry.password);
       setUrl(editEntry.url || '');
       setNotes(editEntry.notes || '');
+      setFolderId(editEntry.folderId || null);
     } else {
       setTitle('');
       setUsername('');
       setPassword('');
       setUrl('');
       setNotes('');
+      setFolderId(defaultFolderId);
     }
-  }, [editEntry, open]);
+  }, [defaultFolderId, editEntry, open]);
 
   const handleGeneratePassword = () => {
     setPassword(generatePassword(20));
@@ -73,7 +125,7 @@ export function AddEntryDialog({ open, onOpenChange, onSave, editEntry }: AddEnt
       url: url || undefined,
       notes: notes || undefined,
       favorite: editEntry?.favorite || false,
-      folderId: editEntry?.folderId,
+      folderId: folderId || undefined,
     });
     
     onOpenChange(false);
@@ -142,7 +194,33 @@ export function AddEntryDialog({ open, onOpenChange, onSave, editEntry }: AddEnt
                 <RefreshCw className="w-4 h-4" />
               </Button>
             </div>
-            {password && <PasswordStrengthIndicator strength={passwordStrength} />}
+          {password && <PasswordStrengthIndicator strength={passwordStrength} />}
+          </div>
+
+          {/* Folder */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Folder</label>
+            <Select
+              value={folderId ?? 'none'}
+              onValueChange={(value) => setFolderId(value === 'none' ? null : value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="No folder" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">
+                  <span className="flex items-center gap-2">
+                    <Folder className="h-4 w-4" />
+                    No folder
+                  </span>
+                </SelectItem>
+                {buildFolderOptions(folders).map((f) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    <span className="whitespace-pre">{'  '.repeat(f.depth)}{f.name}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* URL */}

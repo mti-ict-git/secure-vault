@@ -95,3 +95,22 @@
 ## 2025-12-28 21:33:48
 - Fix KDBX import to preserve folder hierarchy and entry-to-folder mapping.
 
+## 2025-12-28 21:47:24
+- Fix TS2448 by reordering hook helpers so dependencies are declared first.
+
+## 2025-12-28 21:57:03
+- Add nested personal folders tree with expand/collapse and hover delete.
+- Add personal folder create dialog with optional parent folder.
+- Add folder picker to entry add/edit dialog.
+
+## 2025-12-28 21:59:43
+- Fix CSS order so @import precedes Tailwind directives.
+
+## 2025-12-28 22:19:22
+- Added always-visible entry checkboxes for bulk selection.
+- Added bulk actions toolbar (delete, move, toggle favorite, export CSV/JSON).
+- Cleared selection after bulk actions and when switching vault context.
+
+## 2025-12-28 22:21:26
+- Fix CSV export regex to avoid invalid Unicode escape.
+

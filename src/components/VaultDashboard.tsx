@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Search, Plus, Filter, SortAsc, Users, FileKey, ShieldCheck } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Search, Plus, Filter, SortAsc, Users, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { VaultSidebar } from '@/components/VaultSidebar';
@@ -10,6 +10,7 @@ import { TeamMembersDialog } from '@/components/TeamMembersDialog';
 import { KdbxImportExportDialog } from '@/components/KdbxImportExportDialog';
 import { SecurityDashboard } from '@/components/SecurityDashboard';
 import { PasswordEntry, Folder, Team, TeamInvite } from '@/types/vault';
+import { downloadFile } from '@/lib/kdbx-utils';
 import type { KdbxImportedEntry, KdbxImportedFolder } from '@/lib/kdbx-utils';
 import {
   AlertDialog,
@@ -21,7 +22,75 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
+
+type FolderOption = { id: string; name: string; depth: number };
+
+const buildFolderOptions = (folders: Folder[]): FolderOption[] => {
+  const childrenByParent = new Map<string | null, Folder[]>();
+  folders.forEach((folder) => {
+    const parent = folder.parentId ?? null;
+    const siblings = childrenByParent.get(parent);
+    if (siblings) siblings.push(folder);
+    else childrenByParent.set(parent, [folder]);
+  });
+
+  const result: FolderOption[] = [];
+
+  const visit = (folder: Folder, depth: number) => {
+    result.push({ id: folder.id, name: folder.name, depth });
+    const children = childrenByParent.get(folder.id) ?? [];
+    children
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach((child) => visit(child, depth + 1));
+  };
+
+  (childrenByParent.get(null) ?? [])
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .forEach((folder) => visit(folder, 0));
+
+  return result;
+};
+
+const escapeCsvValue = (value: string): string => {
+  const needsQuotes = /[\n\r,"]/u.test(value);
+  const escaped = value.replace(/"/gu, '""');
+  return needsQuotes ? `"${escaped}"` : escaped;
+};
+
+const toCsv = (rows: Array<Record<string, string>>): string => {
+  if (rows.length === 0) return '';
+  const headers = Object.keys(rows[0]);
+  const lines = [headers.map(escapeCsvValue).join(',')];
+  for (const row of rows) {
+    lines.push(headers.map((h) => escapeCsvValue(row[h] ?? '')).join(','));
+  }
+  return lines.join('\n');
+};
+
+const isoDateOnly = (d: Date): string => d.toISOString().slice(0, 10);
 
 interface VaultDashboardProps {
   entries: PasswordEntry[];
@@ -32,6 +101,8 @@ interface VaultDashboardProps {
   onUpdateEntry: (id: string, updates: Partial<PasswordEntry>) => void;
   onDeleteEntry: (id: string) => void;
   onToggleFavorite: (id: string) => void;
+  onAddFolder: (name: string, parentId?: string) => void | Promise<void>;
+  onDeleteFolder: (folderId: string) => void | Promise<void>;
   // Team actions
   onCreateTeam: (name: string, description?: string) => void;
   onUpdateTeam: (id: string, updates: { name: string; description?: string }) => void;
@@ -54,6 +125,8 @@ export function VaultDashboard({
   onUpdateEntry,
   onDeleteEntry,
   onToggleFavorite,
+  onAddFolder,
+  onDeleteFolder,
   onCreateTeam,
   onUpdateTeam,
   onDeleteTeam,
@@ -74,6 +147,11 @@ export function VaultDashboard({
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
   const [kdbxDialogOpen, setKdbxDialogOpen] = useState(false);
   const [kdbxDialogTab, setKdbxDialogTab] = useState<'import' | 'export'>('import');
+
+  const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(() => new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+  const [bulkMoveFolderId, setBulkMoveFolderId] = useState<string | null>(null);
   
   // Team dialogs
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
@@ -94,6 +172,26 @@ export function VaultDashboard({
   // Get personal entries (no teamId)
   const personalEntries = useMemo(() => entries.filter(e => !e.teamId), [entries]);
   const personalFolders = useMemo(() => folders.filter(f => !f.teamId), [folders]);
+  const selectedTeamFolders = useMemo(
+    () => (selectedTeam ? folders.filter((f) => f.teamId === selectedTeam) : []),
+    [folders, selectedTeam]
+  );
+  const availableFolders = selectedTeam ? selectedTeamFolders : personalFolders;
+
+  useEffect(() => {
+    setSelectedEntryIds(new Set());
+  }, [selectedFolder, selectedTeam, showFavorites, showSecurity]);
+
+  useEffect(() => {
+    setSelectedEntryIds((prev) => {
+      const existing = new Set(entries.map((e) => e.id));
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (existing.has(id)) next.add(id);
+      }
+      return next;
+    });
+  }, [entries]);
 
   // Calculate team entry counts
   const teamEntryCounts = useMemo(() => {
@@ -142,6 +240,89 @@ export function VaultDashboard({
   }, [entries, personalEntries, selectedFolder, selectedTeam, showFavorites, searchQuery]);
 
   const favoriteCount = personalEntries.filter(e => e.favorite).length;
+
+  const selectedEntries = useMemo(
+    () => filteredEntries.filter((e) => selectedEntryIds.has(e.id)),
+    [filteredEntries, selectedEntryIds]
+  );
+  const selectedCount = selectedEntries.length;
+
+  const setEntrySelected = (id: string, selected: boolean) => {
+    setSelectedEntryIds((prev) => {
+      const next = new Set(prev);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedEntryIds(new Set());
+
+  const downloadText = (text: string, filename: string) => {
+    const bytes = new TextEncoder().encode(text);
+    const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    downloadFile(buf, filename);
+  };
+
+  const exportSelectedAsJson = () => {
+    if (selectedCount === 0) return;
+    const prefix = selectedTeam ? `team-${selectedTeam}` : 'personal';
+    const filename = `secure-vault-${prefix}-export-${isoDateOnly(new Date())}.json`;
+    const payload = selectedEntries.map((e) => ({
+      ...e,
+      createdAt: e.createdAt.toISOString(),
+      updatedAt: e.updatedAt.toISOString(),
+    }));
+    downloadText(JSON.stringify(payload, null, 2), filename);
+    toast.success(`Exported ${selectedCount} entries`);
+    clearSelection();
+  };
+
+  const exportSelectedAsCsv = () => {
+    if (selectedCount === 0) return;
+    const prefix = selectedTeam ? `team-${selectedTeam}` : 'personal';
+    const filename = `secure-vault-${prefix}-export-${isoDateOnly(new Date())}.csv`;
+    const rows = selectedEntries.map((e) => ({
+      title: e.title,
+      username: e.username,
+      password: e.password,
+      url: e.url ?? '',
+      notes: e.notes ?? '',
+      favorite: e.favorite ? 'true' : 'false',
+      folderId: e.folderId ?? '',
+      teamId: e.teamId ?? '',
+      createdAt: e.createdAt.toISOString(),
+      updatedAt: e.updatedAt.toISOString(),
+    }));
+    downloadText(toCsv(rows), filename);
+    toast.success(`Exported ${selectedCount} entries`);
+    clearSelection();
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedCount === 0) return;
+    selectedEntries.forEach((e) => onDeleteEntry(e.id));
+    toast.success(`Deleted ${selectedCount} entries`);
+    clearSelection();
+    setBulkDeleteOpen(false);
+  };
+
+  const handleBulkMove = () => {
+    if (selectedCount === 0) return;
+    const nextFolderId = bulkMoveFolderId ?? undefined;
+    selectedEntries.forEach((e) => onUpdateEntry(e.id, { folderId: nextFolderId }));
+    toast.success(`Moved ${selectedCount} entries`);
+    clearSelection();
+    setBulkMoveOpen(false);
+    setBulkMoveFolderId(null);
+  };
+
+  const handleBulkToggleFavorites = () => {
+    if (selectedCount === 0) return;
+    selectedEntries.forEach((e) => onToggleFavorite(e.id));
+    toast.success(`Updated ${selectedCount} entries`);
+    clearSelection();
+  };
 
   const handleSaveEntry = (entryData: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>) => {
     // If we're in a team context, add the teamId
@@ -210,6 +391,8 @@ export function VaultDashboard({
         entryCount={personalEntries.length}
         favoriteCount={favoriteCount}
         teamEntryCounts={teamEntryCounts}
+        onAddFolder={onAddFolder}
+        onDeleteFolder={onDeleteFolder}
         onLock={onLock}
         onCreateTeam={() => setCreateTeamOpen(true)}
         onEditTeam={(team) => {
@@ -286,6 +469,47 @@ export function VaultDashboard({
                   </span>
                 </div>
 
+                {selectedCount > 0 && (
+                  <div className="mb-6 p-3 rounded-xl border border-border bg-card/40 flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-muted-foreground">{selectedCount} selected</span>
+                    <div className="ml-auto flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={clearSelection}>
+                        <X className="w-4 h-4" />
+                        Clear
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setBulkMoveOpen(true)}>
+                        <FolderInput className="w-4 h-4" />
+                        Move
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleBulkToggleFavorites}>
+                        <Star className="w-4 h-4" />
+                        Toggle favorite
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            <Download className="w-4 h-4" />
+                            Export
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={exportSelectedAsCsv}>Export CSV</DropdownMenuItem>
+                          <DropdownMenuItem onClick={exportSelectedAsJson}>Export JSON</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setBulkDeleteOpen(true)}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Team info banner */}
                 {selectedTeam && currentTeam && (
                   <div className="mb-6 p-4 bg-primary/5 border border-primary/20 rounded-xl">
@@ -338,6 +562,8 @@ export function VaultDashboard({
                       <PasswordEntryCard
                         key={entry.id}
                         entry={entry}
+                        selected={selectedEntryIds.has(entry.id)}
+                        onSelectedChange={(selected) => setEntrySelected(entry.id, selected)}
                         onToggleFavorite={onToggleFavorite}
                         onEdit={(e) => {
                           setEditEntry(e);
@@ -363,6 +589,8 @@ export function VaultDashboard({
         }}
         onSave={handleSaveEntry}
         editEntry={editEntry}
+        folders={availableFolders}
+        defaultFolderId={selectedTeam ? null : selectedFolder}
       />
 
       {/* Create/Edit Team Dialog */}
@@ -414,6 +642,63 @@ export function VaultDashboard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Selected</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {selectedCount} entr{selectedCount === 1 ? 'y' : 'ies'}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={bulkMoveOpen} onOpenChange={(open) => {
+        setBulkMoveOpen(open);
+        if (!open) setBulkMoveFolderId(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move Selected</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Select
+              value={bulkMoveFolderId ?? 'none'}
+              onValueChange={(value) => setBulkMoveFolderId(value === 'none' ? null : value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="No folder" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No folder</SelectItem>
+                {buildFolderOptions(availableFolders).map((f) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    <span className="whitespace-pre">{'  '.repeat(f.depth)}{f.name}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkMoveOpen(false)}>Cancel</Button>
+            <Button onClick={handleBulkMove}>
+              Move {selectedCount}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Team Confirmation */}
       <AlertDialog open={!!deleteTeamId} onOpenChange={() => setDeleteTeamId(null)}>

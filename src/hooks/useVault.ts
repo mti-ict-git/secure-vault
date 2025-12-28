@@ -82,8 +82,10 @@ export function useVault() {
   const [isCheckingKeys, setIsCheckingKeys] = useState(true); // Start with loading state
   const [vaults, setVaults] = useState<VaultRecord[]>([]);
   const [currentVaultId, setCurrentVaultId] = useState<string | null>(null);
+  const [canUndoLastImport, setCanUndoLastImport] = useState(false);
   const keysRef = useRef<VaultKeys | null>(null);
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
+  const lastImportRef = useRef<{ entryIds: string[]; folderIds: string[] } | null>(null);
 
   // Check if user has keys registered on mount
   useEffect(() => {
@@ -116,6 +118,8 @@ export function useVault() {
     keysRef.current = null;
     setVaults([]);
     setCurrentVaultId(null);
+    setCanUndoLastImport(false);
+    lastImportRef.current = null;
 
     setState({
       isLocked: true,
@@ -329,6 +333,86 @@ export function useVault() {
     }
   }, [currentVaultId]);
 
+  const undoLastImport = useCallback(() => {
+    const last = lastImportRef.current;
+    if (!last) return;
+
+    setState((prev) => {
+      const importedEntryIds = new Set(last.entryIds);
+      const importedFolderIds = new Set(last.folderIds);
+
+      const entries = prev.entries
+        .filter((e) => !importedEntryIds.has(e.id))
+        .map((e) =>
+          e.folderId && importedFolderIds.has(e.folderId) ? { ...e, folderId: undefined } : e
+        );
+
+      const folders = prev.folders.filter((f) => !importedFolderIds.has(f.id));
+      const next = { ...prev, entries, folders };
+      saveVaultSnapshot(next.entries, next.folders);
+      return next;
+    });
+
+    setCanUndoLastImport(false);
+    lastImportRef.current = null;
+    resetInactivityTimer();
+  }, [resetInactivityTimer, saveVaultSnapshot]);
+
+  const addFolder = useCallback(
+    async (name: string, parentId?: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+
+      const id = crypto.randomUUID();
+      setState((prev) => {
+        const next = {
+          ...prev,
+          folders: [...prev.folders, { id, name: trimmed, parentId }],
+        };
+        saveVaultSnapshot(next.entries, next.folders);
+        return next;
+      });
+      resetInactivityTimer();
+    },
+    [resetInactivityTimer, saveVaultSnapshot]
+  );
+
+  const deleteFolder = useCallback(
+    async (folderId: string) => {
+      setState((prev) => {
+        const childrenByParent = new Map<string, string[]>();
+        for (const f of prev.folders) {
+          if (f.teamId) continue;
+          if (!f.parentId) continue;
+          const arr = childrenByParent.get(f.parentId) || [];
+          arr.push(f.id);
+          childrenByParent.set(f.parentId, arr);
+        }
+
+        const toDelete = new Set<string>();
+        const stack = [folderId];
+        while (stack.length) {
+          const id = stack.pop();
+          if (!id || toDelete.has(id)) continue;
+          toDelete.add(id);
+          const kids = childrenByParent.get(id) || [];
+          for (const k of kids) stack.push(k);
+        }
+
+        const folders = prev.folders.filter((f) => f.teamId || !toDelete.has(f.id));
+        const entries = prev.entries.map((e) =>
+          e.teamId || !e.folderId || !toDelete.has(e.folderId) ? e : { ...e, folderId: undefined }
+        );
+
+        const next = { ...prev, entries, folders };
+        saveVaultSnapshot(next.entries, next.folders);
+        return next;
+      });
+      resetInactivityTimer();
+    },
+    [resetInactivityTimer, saveVaultSnapshot]
+  );
+
   const unlock = useCallback(async (masterPassword: string): Promise<boolean> => {
     try {
       // First check if user has keys registered
@@ -540,16 +624,20 @@ export function useVault() {
     ...state,
     needsKeySetup,
     isCheckingKeys,
+    canUndoLastImport,
     currentVaultId,
     vaults,
     unlock,
     lock,
     resetKeys,
+    undoLastImport,
     addEntry,
     updateEntry,
     deleteEntry,
     toggleFavorite,
     importEntries,
+    addFolder,
+    deleteFolder,
     getPersonalEntries,
     getTeamEntries,
     getPersonalFolders,

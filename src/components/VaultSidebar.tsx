@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { 
   Shield,
   ShieldCheck,
@@ -22,6 +22,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,8 +30,33 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Folder as FolderType, Team } from '@/types/vault';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface VaultSidebarProps {
   folders: FolderType[];
@@ -46,6 +72,8 @@ interface VaultSidebarProps {
   entryCount: number;
   favoriteCount: number;
   teamEntryCounts: Record<string, number>;
+  onAddFolder: (name: string, parentId?: string) => void | Promise<void>;
+  onDeleteFolder: (folderId: string) => void | Promise<void>;
   onLock: () => void;
   onCreateTeam: () => void;
   onEditTeam: (team: Team) => void;
@@ -53,6 +81,40 @@ interface VaultSidebarProps {
   onManageMembers: (team: Team) => void;
   onOpenKdbxDialog: (tab: 'import' | 'export') => void;
 }
+
+type FolderOption = { id: string; name: string; depth: number };
+
+const buildFolderOptions = (folders: FolderType[]): FolderOption[] => {
+  const foldersById = new Map<string, FolderType>();
+  const childrenByParent = new Map<string, FolderType[]>();
+
+  for (const folder of folders) {
+    foldersById.set(folder.id, folder);
+  }
+
+  for (const folder of folders) {
+    const parentId = folder.parentId;
+    if (!parentId || !foldersById.has(parentId)) continue;
+    const children = childrenByParent.get(parentId) ?? [];
+    children.push(folder);
+    childrenByParent.set(parentId, children);
+  }
+
+  const roots = folders
+    .filter((f) => !f.parentId || !foldersById.has(f.parentId))
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const result: FolderOption[] = [];
+  const walk = (node: FolderType, depth: number) => {
+    result.push({ id: node.id, name: node.name, depth });
+    const children = (childrenByParent.get(node.id) ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
+    for (const child of children) walk(child, depth + 1);
+  };
+
+  for (const root of roots) walk(root, 0);
+  return result;
+};
 
 const FOLDER_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   code: Code,
@@ -76,6 +138,8 @@ export function VaultSidebar({
   entryCount,
   favoriteCount,
   teamEntryCounts,
+  onAddFolder,
+  onDeleteFolder,
   onLock,
   onCreateTeam,
   onEditTeam,
@@ -85,14 +149,111 @@ export function VaultSidebar({
 }: VaultSidebarProps) {
   const [teamsExpanded, setTeamsExpanded] = useState(true);
   const [foldersExpanded, setFoldersExpanded] = useState(true);
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => new Set());
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [createFolderName, setCreateFolderName] = useState('');
+  const [createFolderParentId, setCreateFolderParentId] = useState<string | null>(null);
+  const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null);
 
-  const personalFolders = folders.filter(f => !f.teamId);
+  const personalFolders = useMemo(() => folders.filter((f) => !f.teamId), [folders]);
+
+  const personalFolderById = useMemo(() => {
+    const map = new Map<string, FolderType>();
+    for (const f of personalFolders) map.set(f.id, f);
+    return map;
+  }, [personalFolders]);
+
+  const personalParentById = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const f of personalFolders) {
+      map.set(f.id, f.parentId ?? null);
+    }
+    return map;
+  }, [personalFolders]);
+
+  const personalChildrenByParent = useMemo(() => {
+    const map = new Map<string, FolderType[]>();
+    for (const f of personalFolders) {
+      if (!f.parentId) continue;
+      if (!personalFolderById.has(f.parentId)) continue;
+      const arr = map.get(f.parentId) ?? [];
+      arr.push(f);
+      map.set(f.parentId, arr);
+    }
+
+    for (const [parentId, children] of map.entries()) {
+      map.set(parentId, children.slice().sort((a, b) => a.name.localeCompare(b.name)));
+    }
+
+    return map;
+  }, [personalFolderById, personalFolders]);
+
+  const personalRoots = useMemo(() => {
+    return personalFolders
+      .filter((f) => !f.parentId || !personalFolderById.has(f.parentId))
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [personalFolderById, personalFolders]);
+
+  useEffect(() => {
+    if (expandedFolderIds.size !== 0) return;
+    if (personalRoots.length === 0) return;
+    setExpandedFolderIds(new Set(personalRoots.map((f) => f.id)));
+  }, [expandedFolderIds.size, personalRoots]);
+
+  useEffect(() => {
+    if (!selectedFolder) return;
+    const next = new Set(expandedFolderIds);
+    let current = personalParentById.get(selectedFolder) ?? null;
+    while (current) {
+      next.add(current);
+      current = personalParentById.get(current) ?? null;
+    }
+    if (next.size !== expandedFolderIds.size) setExpandedFolderIds(next);
+  }, [expandedFolderIds, personalParentById, selectedFolder]);
 
   const handleSelectPersonal = () => {
     onSelectTeam(null);
     onSelectFolder(null);
     if (showFavorites) onToggleFavorites();
     if (showSecurity) onToggleSecurity();
+  };
+
+  const openCreateFolder = () => {
+    const defaultParentId = !selectedTeam && !showFavorites && !showSecurity ? selectedFolder : null;
+    setCreateFolderName('');
+    setCreateFolderParentId(defaultParentId);
+    setCreateFolderOpen(true);
+  };
+
+  const handleCreateFolder = async () => {
+    const trimmed = createFolderName.trim();
+    if (!trimmed) return;
+    await onAddFolder(trimmed, createFolderParentId || undefined);
+    toast.success('Folder created');
+    setCreateFolderOpen(false);
+    setCreateFolderName('');
+    setCreateFolderParentId(null);
+  };
+
+  const handleConfirmDeleteFolder = async () => {
+    const id = deleteFolderId;
+    if (!id) return;
+
+    if (selectedFolder) {
+      let current: string | null = selectedFolder;
+      while (current) {
+        if (current === id) {
+          onSelectFolder(null);
+          break;
+        }
+        current = personalParentById.get(current) ?? null;
+      }
+    }
+
+    await onDeleteFolder(id);
+    toast.success('Folder deleted');
+    setDeleteFolderId(null);
   };
 
   return (
@@ -171,45 +332,116 @@ export function VaultSidebar({
 
         {/* Personal Folders section */}
         <div className="pt-4">
-          <button
-            onClick={() => setFoldersExpanded(!foldersExpanded)}
-            className="w-full flex items-center justify-between px-3 mb-2 group"
-          >
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Folders
-            </span>
-            {foldersExpanded ? (
-              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-            )}
-          </button>
+          <div className="flex items-center justify-between px-3 mb-2">
+            <button
+              onClick={() => setFoldersExpanded(!foldersExpanded)}
+              className="flex items-center gap-1"
+            >
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Folders
+              </span>
+              {foldersExpanded ? (
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
+            </button>
+            <button
+              onClick={openCreateFolder}
+              className="p-1 rounded hover:bg-accent transition-colors"
+              aria-label="Add folder"
+            >
+              <Plus className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          </div>
 
           {foldersExpanded && (
             <div className="space-y-1">
-              {personalFolders.map((folder) => {
-                const Icon = FOLDER_ICONS[folder.icon || ''] || Folder;
-                const isSelected = selectedFolder === folder.id && !showFavorites && !selectedTeam;
-                
-                return (
-                  <button
-                    key={folder.id}
-                    onClick={() => {
-                      onSelectTeam(null);
-                      onSelectFolder(folder.id);
-                      if (showFavorites) onToggleFavorites();
-                    }}
-                    className={cn(
-                      'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                      isSelected
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                    )}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span className="flex-1 text-left">{folder.name}</span>
-                  </button>
-                );
+              {personalRoots.map((folder) => {
+                const renderNode = (node: FolderType, depth: number) => {
+                  const Icon = FOLDER_ICONS[node.icon || ''] || Folder;
+                  const isSelected = selectedFolder === node.id && !showFavorites && !selectedTeam;
+                  const children = personalChildrenByParent.get(node.id) ?? [];
+                  const hasChildren = children.length > 0;
+                  const isExpanded = expandedFolderIds.has(node.id);
+
+                  return (
+                    <div key={node.id}>
+                      <div className="group relative">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            onSelectTeam(null);
+                            onSelectFolder(node.id);
+                            if (showFavorites) onToggleFavorites();
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key !== 'Enter' && e.key !== ' ') return;
+                            e.preventDefault();
+                            onSelectTeam(null);
+                            onSelectFolder(node.id);
+                            if (showFavorites) onToggleFavorites();
+                          }}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                            isSelected
+                              ? 'bg-primary/10 text-primary'
+                              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                          )}
+                          style={{ paddingLeft: 12 + depth * 12 }}
+                        >
+                          {hasChildren ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedFolderIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(node.id)) next.delete(node.id);
+                                  else next.add(node.id);
+                                  return next;
+                                });
+                              }}
+                              className="p-0.5 rounded hover:bg-accent"
+                              aria-label={isExpanded ? 'Collapse folder' : 'Expand folder'}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          ) : (
+                            <span className="w-4" />
+                          )}
+                          <Icon className="w-4 h-4" />
+                          <span className="flex-1 text-left truncate">{node.name}</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteFolderId(node.id);
+                          }}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded opacity-0 group-hover:opacity-100 hover:bg-accent transition-all"
+                          aria-label="Delete folder"
+                        >
+                          <Trash2 className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                      </div>
+
+                      {hasChildren && isExpanded && (
+                        <div className="space-y-1">
+                          {children.map((child) => renderNode(child, depth + 1))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                };
+
+                return renderNode(folder, 0);
               })}
             </div>
           )}
@@ -340,6 +572,75 @@ export function VaultSidebar({
           Lock Vault
         </Button>
       </div>
+
+      <Dialog open={createFolderOpen} onOpenChange={setCreateFolderOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>New Folder</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Folder name *</label>
+              <Input
+                value={createFolderName}
+                onChange={(e) => setCreateFolderName(e.target.value)}
+                placeholder="e.g., Personal, Work, Banking"
+                autoFocus
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Parent folder</label>
+              <Select
+                value={createFolderParentId ?? 'none'}
+                onValueChange={(value) => setCreateFolderParentId(value === 'none' ? null : value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="No parent" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No parent</SelectItem>
+                  {buildFolderOptions(personalFolders).map((f) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      <span className="whitespace-pre">{'  '.repeat(f.depth)}{f.name}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateFolderOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateFolder} disabled={!createFolderName.trim()}>
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteFolderId} onOpenChange={(open) => !open && setDeleteFolderId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Folder</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deleting this folder will also delete any subfolders. Entries inside will be moved to “No folder”. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteFolder}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </aside>
   );
 }
