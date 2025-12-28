@@ -15,6 +15,7 @@ const Index = () => {
     isCheckingKeys,
     unlock,
     lock,
+    resetKeys,
     addEntry,
     updateEntry,
     deleteEntry,
@@ -60,7 +61,7 @@ const Index = () => {
 
   // Existing user: show unlock screen to ENTER existing master password
   if (isLocked) {
-    return <UnlockScreen onUnlock={unlock} />;
+    return <UnlockScreen onUnlock={unlock} onResetKeys={resetKeys} />;
   }
 
   return (

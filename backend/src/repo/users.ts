@@ -46,6 +46,16 @@ export const upsertKeys = async (
     );
 };
 
+export const clearKeys = async (userId: string) => {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("id", userId)
+    .query(
+      "UPDATE dbo.users SET public_sign_key=NULL, public_enc_key=NULL, encrypted_private_key=NULL WHERE id=@id"
+    );
+};
+
 export const getKeys = async (userId: string) => {
   const pool = await getPool();
   const r = await pool

@@ -19,7 +19,9 @@ export const authRoutes = async (app: FastifyInstance) => {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "";
       if (msg === "user_not_found") return reply.status(404).send({ error: "user_not_found" });
+      if (msg === "invalid_credentials") return reply.status(401).send({ error: "invalid_credentials" });
       if (msg === "bind_failed") return reply.status(401).send({ error: "invalid_credentials" });
+      if (msg === "ldap_unavailable") return reply.status(503).send({ error: "ldap_unavailable" });
       return reply.status(503).send({ error: "ldap_unavailable" });
     }
   });

@@ -13,7 +13,7 @@ interface VaultRecord {
   id: string;
   kind: 'personal' | 'team';
   team_id: string | null;
-  vault_key_wrapped: string;
+  vault_key_wrapped_for_user: string;
   version: number;
 }
 
@@ -127,6 +127,14 @@ export function useVault() {
     }
   }, []);
 
+  const resetKeys = useCallback(async (): Promise<boolean> => {
+    const res = await post<{ ok?: boolean }>('/keys/reset', {});
+    if (!res.ok || !res.body?.ok) return false;
+    lock();
+    setNeedsKeySetup(true);
+    return true;
+  }, [lock]);
+
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimer.current) {
       clearTimeout(inactivityTimer.current);
@@ -149,12 +157,12 @@ export function useVault() {
     folders: Folder[];
     vaultId: string | null;
   }> => {
-    const res = await get<{ vaults: VaultRecord[] }>('/vaults');
-    if (!res.ok || !res.body?.vaults) {
+    const res = await get<{ items: VaultRecord[] }>('/vaults');
+    if (!res.ok || !res.body?.items) {
       return { entries: [], folders: [], vaultId: null };
     }
 
-    const vaultRecords = res.body.vaults;
+    const vaultRecords = res.body.items;
     setVaults(vaultRecords);
 
     if (vaultRecords.length === 0) {
@@ -170,7 +178,7 @@ export function useVault() {
       try {
         // Decrypt the vault key using user's private encryption key
         const vaultKey = await openSealed(
-          vault.vault_key_wrapped,
+          vault.vault_key_wrapped_for_user,
           keys.privateKeys.enc_pk_b64,
           keys.privateKeys.enc_sk_b64
         );
@@ -492,6 +500,7 @@ export function useVault() {
     vaults,
     unlock,
     lock,
+    resetKeys,
     addEntry,
     updateEntry,
     deleteEntry,

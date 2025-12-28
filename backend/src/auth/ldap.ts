@@ -1,6 +1,28 @@
 import { Client } from "ldapts";
 import { config } from "../config.js";
 
+const toFirstString = (v: unknown): string | undefined => {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v)) {
+    const first = v[0];
+    return typeof first === "string" ? first : undefined;
+  }
+  return undefined;
+};
+
+const escapeLdapFilterValue = (value: string): string => {
+  let out = "";
+  for (const c of value) {
+    if (c === "*") out += "\\2a";
+    else if (c === "(") out += "\\28";
+    else if (c === ")") out += "\\29";
+    else if (c === "\\") out += "\\5c";
+    else if (c.charCodeAt(0) === 0) out += "\\00";
+    else out += c;
+  }
+  return out;
+};
+
 export const ldapLogin = async (username: string, password: string) => {
   if (!config.ldap.url) {
     if (username === "demo" && password === "demo") {
@@ -16,21 +38,36 @@ export const ldapLogin = async (username: string, password: string) => {
   });
   const adminBindDN = config.ldap.bindDN;
   const adminBindPassword = config.ldap.bindPassword;
-  await client.bind(adminBindDN, adminBindPassword);
+  try {
+    await client.bind(adminBindDN, adminBindPassword);
+  } catch {
+    await client.unbind();
+    throw new Error("ldap_unavailable");
+  }
   const upn = username.includes("@") ? username : undefined;
-  const primaryFilter = config.ldap.userSearchFilter.replace("{username}", username);
-  const { searchEntries } = await client.search(config.ldap.userSearchBase, {
-    scope: "sub",
-    filter: primaryFilter,
-  });
-  const entry = searchEntries[0] as { dn: string; mail?: string; userPrincipalName?: string };
+  const safeUsername = escapeLdapFilterValue(username);
+  const primaryFilter = config.ldap.userSearchFilter.replace("{username}", safeUsername);
+
+  const searchOne = async (filter: string) => {
+    const { searchEntries } = await client.search(config.ldap.userSearchBase, {
+      scope: "sub",
+      filter,
+    });
+    const first = searchEntries[0] as Record<string, unknown> | undefined;
+    const dn = toFirstString(first?.dn);
+    if (!dn) return undefined;
+    const mail = toFirstString(first?.mail);
+    const userPrincipalName = toFirstString(first?.userPrincipalName);
+    return { dn, mail, userPrincipalName };
+  };
+
+  const entry = await searchOne(primaryFilter);
   if (!entry) {
     if (upn) {
-      const { searchEntries: byUpn } = await client.search(config.ldap.userSearchBase, {
-        scope: "sub",
-        filter: `(userPrincipalName=${upn})`,
-      });
-      const alt = byUpn[0] as { dn: string; mail?: string; userPrincipalName?: string } | undefined;
+      const safeUpn = escapeLdapFilterValue(upn);
+      const byUpn = await searchOne(`(userPrincipalName=${safeUpn})`);
+      const byMail = await searchOne(`(mail=${safeUpn})`);
+      const alt = byUpn || byMail;
       if (!alt) {
         await client.unbind();
         throw new Error("user_not_found");

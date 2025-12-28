@@ -4,16 +4,29 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 interface UnlockScreenProps {
   onUnlock: (password: string) => Promise<boolean> | boolean;
+  onResetKeys?: () => Promise<boolean>;
 }
 
-export function UnlockScreen({ onUnlock }: UnlockScreenProps) {
+export function UnlockScreen({ onUnlock, onResetKeys }: UnlockScreenProps) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isUnlocking, setIsUnlocking] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +38,7 @@ export function UnlockScreen({ onUnlock }: UnlockScreenProps) {
       const success = result instanceof Promise ? await result : result;
       
       if (!success) {
-        setError('Invalid master password or decryption failed.');
+        setError('Invalid master passphrase. This is not your LDAP password.');
         setPassword('');
       }
     } catch (err) {
@@ -34,6 +47,20 @@ export function UnlockScreen({ onUnlock }: UnlockScreenProps) {
       setPassword('');
     } finally {
       setIsUnlocking(false);
+    }
+  };
+
+  const handleResetKeys = async () => {
+    if (!onResetKeys) return;
+    setIsResetting(true);
+    setError('');
+    try {
+      const ok = await onResetKeys();
+      if (!ok) setError('Failed to reset keys. Please try again.');
+    } catch {
+      setError('Failed to reset keys. Please try again.');
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -59,8 +86,11 @@ export function UnlockScreen({ onUnlock }: UnlockScreenProps) {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <label htmlFor="master-password" className="text-sm font-medium text-foreground">
-                Master Password
+                Master Passphrase
               </label>
+              <p className="text-xs text-muted-foreground">
+                Use the passphrase you created during key setup (not your LDAP password).
+              </p>
               <div className="relative">
                 <Input
                   id="master-password"
@@ -118,6 +148,32 @@ export function UnlockScreen({ onUnlock }: UnlockScreenProps) {
               <br />
               All encryption happens locally in your browser.
             </p>
+
+            {onResetKeys && (
+              <div className="mt-4">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="w-full" disabled={isResetting}>
+                      {isResetting ? 'Resetting keys...' : 'Forgot passphrase? Reset encryption keys'}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Reset encryption keys?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This removes your current keys from the server. You will need to set up new keys. Existing encrypted vault data may become inaccessible.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={isResetting}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction disabled={isResetting} onClick={handleResetKeys}>
+                        Reset keys
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            )}
             <div className="mt-4 text-center">
               <Link to="/login" className="text-sm text-primary hover:underline">Sign in with LDAP</Link>
             </div>

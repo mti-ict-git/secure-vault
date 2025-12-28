@@ -4,7 +4,7 @@ import rateLimit from "@fastify/rate-limit";
 import { config } from "./config.js";
 import { registerRoutes } from "./urls.js";
 import { pingDb } from "./db/mssql.js";
-import { jwtGuard } from "./plugins/jwtGuard.js";
+import { installJwtGuard } from "./plugins/jwtGuard.js";
 
 export const server = Fastify({
   logger: {
@@ -33,7 +33,7 @@ await server.route({
   },
 });
 
-await server.register(jwtGuard);
+installJwtGuard(server);
 await registerRoutes(server);
 
 await server.route({

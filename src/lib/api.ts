@@ -18,12 +18,20 @@ const parse = async (res: Response): Promise<ApiResponse> => {
 type UnauthorizedEventDetail = {
   path: string;
   status: 401;
+  error?: string;
 };
 
-const notifyUnauthorized = (path: string) => {
+const notifyUnauthorized = (path: string, error?: string) => {
   localStorage.removeItem("sv.jwt");
-  const detail: UnauthorizedEventDetail = { path, status: 401 };
+  const detail: UnauthorizedEventDetail = { path, status: 401, error };
   window.dispatchEvent(new CustomEvent<UnauthorizedEventDetail>("sv:unauthorized", { detail }));
+};
+
+const getErrorString = (body: unknown): string | undefined => {
+  if (typeof body !== "object" || body === null) return undefined;
+  const r = body as Record<string, unknown>;
+  const e = r.error;
+  return typeof e === "string" ? e : undefined;
 };
 
 export const request = async <T = unknown>(path: string, init: RequestInit = {}): Promise<ApiResponse<T>> => {
@@ -47,10 +55,14 @@ export const request = async <T = unknown>(path: string, init: RequestInit = {})
     ...baseHeaders,
     ...initHeaders,
   } as Record<string, string>;
-  const res = await fetch(`${BASE}${path}`, { ...init, headers: headers as HeadersInit });
+  const fetchHeaders = new Headers();
+  for (const [k, v] of Object.entries(headers)) {
+    fetchHeaders.set(k, v);
+  }
+  const res = await fetch(`${BASE}${path}`, { ...init, headers: fetchHeaders });
   const parsed = (await parse(res)) as ApiResponse<T>;
   if (res.status === 401) {
-    notifyUnauthorized(path);
+    notifyUnauthorized(path, getErrorString(parsed.body));
   }
   return parsed;
 };
@@ -75,7 +87,11 @@ export const getBinary = async (path: string, init: RequestInit = {}): Promise<A
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...initHeaders,
   } as Record<string, string>;
-  const res = await fetch(`${BASE}${path}`, { ...init, headers: headers as HeadersInit });
+  const fetchHeaders = new Headers();
+  for (const [k, v] of Object.entries(headers)) {
+    fetchHeaders.set(k, v);
+  }
+  const res = await fetch(`${BASE}${path}`, { ...init, headers: fetchHeaders });
   if (res.status === 401) {
     notifyUnauthorized(path);
   }

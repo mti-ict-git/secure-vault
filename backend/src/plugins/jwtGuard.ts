@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { verifyJwt } from "../utils/jwt.js";
 import { isSessionValid } from "../repo/users.js";
 
@@ -8,22 +8,27 @@ declare module "fastify" {
   }
 }
 
-export const jwtGuard: FastifyPluginAsync = async (app) => {
+export const installJwtGuard = (app: FastifyInstance) => {
   app.addHook("preHandler", async (req, reply) => {
+    if (req.method === "OPTIONS") return;
     const openPaths = ["/health", "/health/db", "/auth/ldap/login", "/sync/events"];
     const path = (req.url || "").split("?")[0];
     if (openPaths.includes(path)) return;
-    const auth = req.headers.authorization;
-    if (!auth?.startsWith("Bearer ")) {
+
+    const rawAuth = req.headers.authorization;
+    const authHeader = (Array.isArray(rawAuth) ? rawAuth[0] : rawAuth)?.trim();
+    if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
       return reply.status(401).send({ error: "unauthorized" });
     }
-    const token = auth.slice("Bearer ".length);
+
+    const token = authHeader.slice("Bearer ".length).trim();
     let payload: unknown;
     try {
       payload = verifyJwt(token);
     } catch {
       return reply.status(401).send({ error: "invalid_token" });
     }
+
     const { sid, sub } = payload as { sid: string; sub: string };
     const valid = await isSessionValid(sid);
     if (!valid) return reply.status(401).send({ error: "session_revoked" });

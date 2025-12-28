@@ -36,3 +36,44 @@
 - Dispatch global unauthorized event to clear JWT and return to login.
 - Suppressed team-loading toasts during unauthorized state.
 
+## 2025-12-28 19:44:39 +08:00
+- Validate stored JWT with /me before marking session authenticated.
+- Prevent initial render from calling protected APIs with invalid/stale token.
+
+## 2025-12-28 19:49:25 +08:00
+- Include backend 401 reason (unauthorized/invalid_token/session_revoked) in auth reset event.
+- Validate freshly issued login token with /me before redirecting to app.
+
+## 2025-12-28 19:51:24 +08:00
+- Force /me validation to send explicit Authorization header after login.
+
+## 2025-12-28 19:54:39 +08:00
+- Allow CORS preflight OPTIONS requests to bypass JWT guard.
+
+## 2025-12-28 19:58:55 +08:00
+- Add LDAP fallback lookup by mail attribute when username is an email.
+
+## 2025-12-28 20:02:52 +08:00
+- Construct fetch headers via Headers() to ensure Authorization is sent.
+
+## 2025-12-28 20:16:27
+- Fix LDAP attribute parsing to avoid non-string mail/UPN values.
+- Escape LDAP filter values and normalize LDAP unavailability errors.
+- Map invalid_credentials correctly from LDAP login endpoint.
+
+## 2025-12-28 20:28:36
+- Fix JWT guard to accept trimmed/case-insensitive Bearer header.
+- Refactor auth guard installation to avoid encapsulation issues.
+- Update backend API test script to accept env credentials and validate /me.
+
+## 2025-12-28 20:31:42
+- Fix ESLint no-control-regex by rewriting LDAP filter escaping.
+
+## 2025-12-28 20:36:13
+- Improve unlock screen messaging to clarify master passphrase vs LDAP.
+- Add keys reset endpoint and UI confirmation flow.
+
+## 2025-12-28 20:40:55 +08:00
+- Fix vault list response parsing and use per-user wrapped vault key.
+- Normalize /keys/reset request string quoting.
+

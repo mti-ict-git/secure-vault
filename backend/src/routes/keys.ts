@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { KeysRegisterSchema } from "../utils/validators.js";
-import { getKeys, upsertKeys } from "../repo/users.js";
+import { clearKeys, getKeys, upsertKeys } from "../repo/users.js";
 
 export const keysRoutes = async (app: FastifyInstance) => {
   app.post("/register", async (req, reply) => {
@@ -20,5 +20,12 @@ export const keysRoutes = async (app: FastifyInstance) => {
     if (!userId) return reply.status(401).send({ error: "unauthorized" });
     const keys = await getKeys(userId);
     return reply.send(keys || {});
+  });
+
+  app.post("/reset", async (req, reply) => {
+    const userId = req.user?.id;
+    if (!userId) return reply.status(401).send({ error: "unauthorized" });
+    await clearKeys(userId);
+    return reply.send({ ok: true });
   });
 };
