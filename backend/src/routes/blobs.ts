@@ -8,7 +8,8 @@ import { config } from "../config.js";
 import { createReadStream } from "fs";
 import { join } from "path";
 import { FileSystemAdapter } from "../storage/adapter.js";
-import { uid } from "../state/store.js";
+import { publishSyncEvent, uid } from "../state/store.js";
+import { getVaultAccessForUser } from "../repo/vaults.js";
 
 export const blobRoutes = async (app: FastifyInstance) => {
   await app.register(multipart, {
@@ -25,6 +26,11 @@ export const blobRoutes = async (app: FastifyInstance) => {
       created_by?: string;
     };
     const vaultId = (req.params as Params).id;
+    const userId = req.user?.id;
+    if (!userId) return reply.status(401).send({ error: "unauthorized" });
+    const access = await getVaultAccessForUser(vaultId, userId);
+    if (!access) return reply.status(403).send({ error: "forbidden" });
+    if (access.permissions !== "write") return reply.status(403).send({ error: "forbidden" });
     const requestWithParts = req as FastifyRequest & {
       parts: () => AsyncIterableIterator<Multipart>;
     };
@@ -59,22 +65,36 @@ export const blobRoutes = async (app: FastifyInstance) => {
       meta.content_sha256 || "",
       dest,
       meta.size_bytes || 0,
-      req.user?.id || null
+      userId
     );
-    await writeAudit(req.user?.id || null, "blob_upload", "vault", vaultId, { blob_id: id, blob_type: meta.blob_type || "snapshot" });
+    await writeAudit(userId, "blob_upload", "vault", vaultId, { blob_id: id, blob_type: meta.blob_type || "snapshot" });
+    publishSyncEvent({ t: Date.now(), type: "blob_upload", vault_id: vaultId, actor_user_id: userId });
     return reply.status(201).send({ id });
   });
   app.get("/:id/blobs", async (req, reply) => {
     type ListParams = { id: string };
     const vaultId = (req.params as ListParams).id;
+    const userId = req.user?.id;
+    if (!userId) return reply.status(401).send({ error: "unauthorized" });
+    const access = await getVaultAccessForUser(vaultId, userId);
+    if (!access) return reply.status(403).send({ error: "forbidden" });
     const items = await listBlobs(vaultId);
     return reply.send({ items });
   });
   app.get("/:id/blobs/:blobId", async (req, reply) => {
     type GetParams = { id: string; blobId: string };
+    const vaultId = (req.params as GetParams).id;
     const blobId = (req.params as GetParams).blobId;
+    const userId = req.user?.id;
+    if (!userId) return reply.status(401).send({ error: "unauthorized" });
     const blob = await getBlob(blobId);
     if (!blob) return reply.status(404).send({ error: "not_found" });
+    const blobVaultId = (blob as { vault_id?: string | null }).vault_id;
+    if (!blobVaultId || blobVaultId !== vaultId) {
+      return reply.status(404).send({ error: "not_found" });
+    }
+    const access = await getVaultAccessForUser(blobVaultId, userId);
+    if (!access) return reply.status(403).send({ error: "forbidden" });
     reply.header("Content-Type", "application/octet-stream");
     const rs = createReadStream(blob.storage_ref);
     return reply.send(rs);

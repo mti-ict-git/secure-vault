@@ -12,3 +12,10 @@
 ## 2025-12-28 09:05:26 +08:00
 - Fixed TypeScript narrowing for `LoginResult` in auth context.
 
+## 2025-12-28 10:33:11 +08:00
+- Enforced backend auth guard ordering so routes require JWT by default.
+- Tightened team RBAC for invites, role changes, and member removals.
+- Added soft-revoke semantics for team members and safer team deletion cleanup.
+- Enforced vault access checks for blob list/download/upload and vault sharing.
+- Filtered sync SSE events to only emit vault/team-relevant events per user.
+

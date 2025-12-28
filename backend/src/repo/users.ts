@@ -63,6 +63,17 @@ export const getUserById = async (userId: string) => {
   return r.recordset[0] || null;
 };
 
+export const getPublicKeysByUserId = async (userId: string) => {
+  const pool = await getPool();
+  const r = await pool
+    .request()
+    .input("id", userId)
+    .query(
+      "SELECT id, display_name, email, public_sign_key, public_enc_key FROM dbo.users WHERE id=@id"
+    );
+  return r.recordset[0] || null;
+};
+
 export const createSession = async (userId: string) => {
   const id = uid();
   const pool = await getPool();

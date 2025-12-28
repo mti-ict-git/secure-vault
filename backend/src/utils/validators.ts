@@ -34,6 +34,13 @@ export const ShareSchema = z.object({
 
 export const CreateTeamSchema = z.object({
   name: z.string().min(1),
+  description: z.string().min(1).optional(),
+  team_key_wrapped_for_creator: z.string().min(16),
+});
+
+export const UpdateTeamSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
 });
 
 export const UpdateRoleSchema = z.object({

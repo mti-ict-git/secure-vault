@@ -29,10 +29,19 @@ BEGIN
 CREATE TABLE dbo.teams (
   id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
   name NVARCHAR(255) NOT NULL,
+  description NVARCHAR(1024) NULL,
   created_by UNIQUEIDENTIFIER NOT NULL,
   team_key_wrapped_for_creator NVARCHAR(MAX) NULL,
   created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
+END;
+
+IF EXISTS (SELECT * FROM sys.tables WHERE name = 'teams')
+BEGIN
+  IF COL_LENGTH('dbo.teams', 'description') IS NULL
+  BEGIN
+    ALTER TABLE dbo.teams ADD description NVARCHAR(1024) NULL;
+  END;
 END;
 
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'vaults')
@@ -124,4 +133,3 @@ CREATE TABLE dbo.uploads (
 );
 CREATE INDEX IX_uploads_user ON dbo.uploads (user_id);
 END;
-

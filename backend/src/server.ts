@@ -33,8 +33,8 @@ await server.route({
   },
 });
 
-await registerRoutes(server);
 await server.register(jwtGuard);
+await registerRoutes(server);
 
 await server.route({
   method: "GET",

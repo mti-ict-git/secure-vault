@@ -1,10 +1,33 @@
 import { aeadDecrypt, aeadEncrypt, type AeadPayloadV1 } from "@/lib/crypto/aead";
-import { bytesToBase64, base64ToBytes, bytesToUtf8, utf8ToBytes } from "@/lib/crypto/encoding";
+import { bytesToUtf8, utf8ToBytes } from "@/lib/crypto/encoding";
+
+export type VaultEntryRecordV1 = {
+  id: string;
+  title: string;
+  username: string;
+  password: string;
+  url?: string;
+  notes?: string;
+  folderId?: string;
+  teamId?: string;
+  createdAt: string;
+  updatedAt: string;
+  favorite: boolean;
+  createdBy?: string;
+};
+
+export type VaultFolderRecordV1 = {
+  id: string;
+  name: string;
+  icon?: string;
+  parentId?: string;
+  teamId?: string;
+};
 
 export type VaultSnapshotV1 = {
   v: 1;
-  entries: unknown[];
-  folders: unknown[];
+  entries: VaultEntryRecordV1[];
+  folders: VaultFolderRecordV1[];
 };
 
 export type EncryptedVaultSnapshotV1 = {
@@ -33,8 +56,3 @@ export const deserializeEncryptedSnapshot = (bytes: Uint8Array): EncryptedVaultS
   const json = bytesToUtf8(bytes);
   return JSON.parse(json) as EncryptedVaultSnapshotV1;
 };
-
-export const serializeSealedVaultKey = (vaultKey: Uint8Array): string => bytesToBase64(vaultKey);
-
-export const parseSealedVaultKey = (b64: string): Uint8Array => base64ToBytes(b64);
-

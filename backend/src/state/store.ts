@@ -1,3 +1,5 @@
+import { EventEmitter } from "node:events";
+
 type UUID = string;
 
 type User = {
@@ -73,3 +75,33 @@ export const uid = () =>
     const v = c === "x" ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+
+export type SyncEvent = {
+  t: number;
+  type:
+    | "vault_create"
+    | "blob_upload"
+    | "team_create"
+    | "team_invite"
+    | "team_invite_accept"
+    | "team_update"
+    | "team_delete"
+    | "team_role_update"
+    | "team_member_remove"
+    | "vault_share";
+  vault_id?: UUID;
+  team_id?: UUID;
+  member_id?: UUID;
+  actor_user_id?: UUID;
+};
+
+const syncBus = new EventEmitter();
+
+export const publishSyncEvent = (evt: SyncEvent) => {
+  syncBus.emit("evt", evt);
+};
+
+export const subscribeSyncEvents = (handler: (evt: SyncEvent) => void) => {
+  syncBus.on("evt", handler);
+  return () => syncBus.off("evt", handler);
+};

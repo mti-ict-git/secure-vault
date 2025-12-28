@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { listAudits } from "../repo/audit.js";
+import { getPublicKeysByUserId } from "../repo/users.js";
 
 export const meRoutes = async (app: FastifyInstance) => {
   app.get("/me", async (_req, reply) => {
@@ -10,5 +11,12 @@ export const meRoutes = async (app: FastifyInstance) => {
   app.get("/audit", async (_req, reply) => {
     const items = await listAudits(_req.user?.id);
     return reply.send({ items });
+  });
+  app.get("/users/:id/public-keys", async (req, reply) => {
+    type Params = { id: string };
+    const id = (req.params as Params).id;
+    const u = await getPublicKeysByUserId(id);
+    if (!u) return reply.status(404).send({ error: "not_found" });
+    return reply.send(u);
   });
 };
