@@ -1,46 +1,36 @@
 import type { FastifyInstance } from "fastify";
-import { InviteSchema } from "../utils/validators.js";
-import { store, uid } from "../state/store.js";
+import { InviteSchema, CreateTeamSchema, UpdateRoleSchema } from "../utils/validators.js";
+import { createTeam, inviteMember, updateMemberRole, removeMember } from "../repo/teams.js";
+import { writeAudit } from "../repo/audit.js";
 
 export const teamRoutes = async (app: FastifyInstance) => {
   app.post("/", async (req, reply) => {
-    const name = (req.body as any)?.name as string;
-    if (!name) return reply.status(400).send({ error: "invalid_name" });
-    const id = uid();
-    store.teams.set(id, {
-      id,
-      name,
-      created_by: "",
-      created_at: Date.now(),
-    });
+    const { name } = CreateTeamSchema.parse(req.body);
+    const id = await createTeam(name, req.user?.id || "");
+    await writeAudit(req.user?.id || null, "team_create", "team", id, { name });
     return reply.status(201).send({ id });
   });
   app.post("/:id/invite", async (req, reply) => {
-    const teamId = (req.params as any).id as string;
+    type Params = { id: string };
+    const teamId = (req.params as Params).id;
     const body = InviteSchema.parse(req.body);
-    const id = uid();
-    store.team_members.set(id, {
-      id,
-      team_id: teamId,
-      user_id: body.user_id,
-      role: body.role,
-      invited_by: "",
-      invited_at: Date.now(),
-      team_key_wrapped: body.team_key_wrapped,
-    });
+    const id = await inviteMember(teamId, body.user_id, body.role, req.user?.id || "", body.team_key_wrapped);
+    await writeAudit(req.user?.id || null, "team_invite", "team", teamId, { member_id: id, role: body.role });
     return reply.status(201).send({ id });
   });
   app.post("/:id/members/:memberId/role", async (req, reply) => {
-    const memberId = (req.params as any).memberId as string;
-    const role = (req.body as any)?.role as string;
-    const m = store.team_members.get(memberId);
-    if (!m) return reply.status(404).send({ error: "not_found" });
-    m.role = role as any;
+    type Params = { id: string; memberId: string };
+    const memberId = (req.params as Params).memberId;
+    const { role } = UpdateRoleSchema.parse(req.body);
+    await updateMemberRole(memberId, role);
+    await writeAudit(req.user?.id || null, "team_role_update", "team_member", memberId, { role });
     return reply.send({ ok: true });
   });
   app.delete("/:id/members/:memberId", async (req, reply) => {
-    const memberId = (req.params as any).memberId as string;
-    store.team_members.delete(memberId);
+    type Params = { id: string; memberId: string };
+    const memberId = (req.params as Params).memberId;
+    await removeMember(memberId);
+    await writeAudit(req.user?.id || null, "team_member_remove", "team_member", memberId, {});
     return reply.send({ ok: true });
   });
 };

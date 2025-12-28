@@ -59,6 +59,7 @@ export const config = {
     userSearchBase: process.env.LDAP_USER_SEARCH_BASE || "",
     userSearchFilter: process.env.LDAP_USER_SEARCH_FILTER || "",
     groupSearchBase: process.env.LDAP_GROUP_SEARCH_BASE || "",
+    domain: process.env.LDAP_DOMAIN || "",
     timeout: toNumber(process.env.LDAP_TIMEOUT, 5000),
     connectTimeout: toNumber(process.env.LDAP_CONNECT_TIMEOUT, 10000),
     tlsRejectUnauthorized: toBool(

@@ -1,14 +1,14 @@
 import type { FastifyInstance } from "fastify";
-import { store } from "../state/store.js";
+import { listAudits } from "../repo/audit.js";
 
 export const meRoutes = async (app: FastifyInstance) => {
   app.get("/me", async (_req, reply) => {
-    const users = Array.from(store.users.values());
-    const user = users[0];
-    if (!user) return reply.status(401).send({ error: "unauthorized" });
-    return reply.send({ id: user.id, display_name: user.display_name });
+    const userId = _req.user?.id;
+    if (!userId) return reply.status(401).send({ error: "unauthorized" });
+    return reply.send({ id: userId });
   });
   app.get("/audit", async (_req, reply) => {
-    return reply.send({ items: [] });
+    const items = await listAudits(_req.user?.id);
+    return reply.send({ items });
   });
 };

@@ -31,3 +31,11 @@ export const ShareSchema = z.object({
   wrapped_key: z.string().min(16),
   permissions: z.enum(["read", "write"]),
 });
+
+export const CreateTeamSchema = z.object({
+  name: z.string().min(1),
+});
+
+export const UpdateRoleSchema = z.object({
+  role: z.enum(["owner", "admin", "editor", "viewer"]),
+});

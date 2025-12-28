@@ -3,6 +3,7 @@ import { Shield, Eye, EyeOff, Lock, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { Link } from 'react-router-dom';
 
 interface UnlockScreenProps {
   onUnlock: (password: string) => boolean;
@@ -113,6 +114,9 @@ export function UnlockScreen({ onUnlock }: UnlockScreenProps) {
               <br />
               All encryption happens locally in your browser.
             </p>
+            <div className="mt-4 text-center">
+              <Link to="/login" className="text-sm text-primary hover:underline">Sign in with LDAP</Link>
+            </div>
           </div>
         </div>
 
