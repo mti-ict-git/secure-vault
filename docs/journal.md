@@ -141,3 +141,12 @@
 ## 2025-12-28 23:48:11 +08:00
 - Fixed nginx /api upstream port to match backend container port 8084.
 
+## 2025-12-28 23:53:53 +08:00
+- Fixed production CORS mismatch by allowing hostname-based origins and avoiding 500 on deny.
+
+## 2025-12-29 00:15:32
+- Removed previous generator branding and tagger integration.
+- Updated app title and social metadata to SecureVault.
+- Added light/dark green favicon SVGs and wired them in index.html.
+- Adjusted primary green tokens for light and dark themes.
+

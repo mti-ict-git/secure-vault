@@ -15,7 +15,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 160 84% 39%;
+    --primary: 142 71% 45%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 215 20% 95%;
@@ -33,12 +33,12 @@
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    --success: 160 84% 39%;
+    --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
 
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 160 84% 39%;
+    --ring: 142 71% 45%;
 
     --radius: 0.75rem;
 
@@ -53,10 +53,10 @@
 
     /* Custom tokens */
     --vault-locked: 0 84% 60%;
-    --vault-unlocked: 160 84% 39%;
+    --vault-unlocked: 142 71% 45%;
     --password-strength-weak: 0 84% 60%;
     --password-strength-medium: 38 92% 50%;
-    --password-strength-strong: 160 84% 39%;
+    --password-strength-strong: 142 71% 45%;
   }
 
   .dark {
@@ -69,7 +69,7 @@
     --popover: 222 47% 8%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 160 84% 45%;
+    --primary: 142 71% 50%;
     --primary-foreground: 222 47% 6%;
 
     --secondary: 217 33% 17%;
@@ -87,25 +87,25 @@
     --warning: 38 92% 50%;
     --warning-foreground: 222 47% 6%;
 
-    --success: 160 84% 45%;
+    --success: 142 71% 50%;
     --success-foreground: 222 47% 6%;
 
     --border: 217 33% 20%;
     --input: 217 33% 20%;
-    --ring: 160 84% 45%;
+    --ring: 142 71% 50%;
 
     --sidebar-background: 222 47% 6%;
     --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 160 84% 45%;
+    --sidebar-primary: 142 71% 50%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 217 33% 17%;
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 217 33% 20%;
-    --sidebar-ring: 160 84% 45%;
+    --sidebar-ring: 142 71% 50%;
 
     /* Custom tokens */
     --vault-locked: 0 63% 45%;
-    --vault-unlocked: 160 84% 45%;
+    --vault-unlocked: 142 71% 50%;
   }
 }
 
