@@ -15,5 +15,6 @@ RUN npm run build
 ENV NODE_ENV=production
 EXPOSE 8082
 
-CMD ["sh", "-c", "npm run migrate && node dist/index.js"]
+ENV RUN_MIGRATIONS=false
 
+CMD ["sh", "-c", "if [ \"$RUN_MIGRATIONS\" = \"true\" ]; then npm run migrate; fi; node dist/index.js"]

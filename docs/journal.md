@@ -135,3 +135,6 @@
 ## 2025-12-28 23:08:11 +08:00
 - Ignored .env files and removed tracked .env from git index.
 
+## 2025-12-28 23:34:04 +08:00
+- Made backend container startup resilient by making migrations optional via RUN_MIGRATIONS.
+
