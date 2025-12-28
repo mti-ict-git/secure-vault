@@ -127,3 +127,8 @@
 ## 2025-12-28 22:53:09 +08:00
 - Added a report mode to verify all blobs are DB-backed before cleanup.
 
+## 2025-12-28 23:01:31 +08:00
+- Added Dockerfiles for backend and frontend.
+- Added docker-compose.yml to run both services with DB upload storage.
+- Added nginx reverse proxy to route /api to backend and serve SPA.
+
