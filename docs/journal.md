@@ -77,3 +77,21 @@
 - Fix vault list response parsing and use per-user wrapped vault key.
 - Normalize /keys/reset request string quoting.
 
+## 2025-12-28 20:45:50 +08:00
+- Fix vault blob list response parsing so snapshots load on refresh.
+- Store snapshots as blob_type "snapshot" and auto-create personal vault when missing.
+
+## 2025-12-28 20:55:56 +08:00
+- Fix blob upload 415 by normalizing allowed MIME types.
+- Accept wildcard upload types and compare MIME types case-insensitively.
+
+## 2025-12-28 21:00:11
+- Added application/octet-stream to UPLOAD_ALLOWED_TYPES to allow snapshot uploads.
+
+## 2025-12-28 21:25:34
+- Wired sidebar Import/Export actions to open KeePass dialog.
+- Allow opening KeePass dialog directly to Import or Export tab.
+
+## 2025-12-28 21:33:48
+- Fix KDBX import to preserve folder hierarchy and entry-to-folder mapping.
+

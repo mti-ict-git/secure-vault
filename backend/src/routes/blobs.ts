@@ -52,9 +52,13 @@ export const blobRoutes = async (app: FastifyInstance) => {
     if (!filePart) return reply.status(400).send({ error: "no_file" });
     if (
       config.uploads.allowed.length &&
-      !config.uploads.allowed.includes(filePart.mimetype)
+      !config.uploads.allowed.includes("*") &&
+      !config.uploads.allowed.includes("*/*")
     ) {
-      return reply.status(415).send({ error: "unsupported_type" });
+      const mt = (filePart.mimetype || "").toLowerCase();
+      if (!config.uploads.allowed.includes(mt)) {
+        return reply.status(415).send({ error: "unsupported_type" });
+      }
     }
     const storage = new FileSystemAdapter();
     const blobId = uid();

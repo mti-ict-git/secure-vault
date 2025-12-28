@@ -1,9 +1,18 @@
 import * as kdbxweb from 'kdbxweb';
 import { PasswordEntry, Folder } from '@/types/vault';
 
+export interface KdbxImportedEntry extends Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt' | 'folderId'> {
+  folderSourceId?: string;
+}
+
+export interface KdbxImportedFolder extends Omit<Folder, 'id' | 'parentId'> {
+  sourceId: string;
+  parentSourceId?: string;
+}
+
 export interface KdbxImportResult {
-  entries: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>[];
-  folders: Omit<Folder, 'id'>[];
+  entries: KdbxImportedEntry[];
+  folders: KdbxImportedFolder[];
   stats: {
     totalEntries: number;
     totalGroups: number;
@@ -35,21 +44,19 @@ export async function importKdbx(
   // Load the database
   const db = await kdbxweb.Kdbx.load(arrayBuffer, credentials);
 
-  const entries: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>[] = [];
-  const folders: Omit<Folder, 'id'>[] = [];
-  const folderIdMap = new Map<string, string>();
+  const entries: KdbxImportedEntry[] = [];
+  const folders: KdbxImportedFolder[] = [];
 
   // Process groups (folders)
-  function processGroup(group: kdbxweb.KdbxGroup, parentId?: string) {
+  function processGroup(group: kdbxweb.KdbxGroup, parentUuid?: string) {
     const groupUuid = group.uuid.toString();
-    const folderId = `kdbx-${groupUuid}`;
     
     // Skip the root group itself but process its children
     if (group.name && group !== db.getDefaultGroup()) {
-      folderIdMap.set(groupUuid, folderId);
       folders.push({
+        sourceId: groupUuid,
         name: group.name,
-        parentId: parentId,
+        parentSourceId: parentUuid,
         icon: getIconName(group.icon),
       });
     }
@@ -77,14 +84,14 @@ export async function importKdbx(
         password: getStringValue(password),
         url: getStringValue(url) || undefined,
         notes: getStringValue(notes) || undefined,
-        folderId: parentId ? folderIdMap.get(parentId.replace('kdbx-', '')) : undefined,
+        folderSourceId: group === db.getDefaultGroup() ? undefined : groupUuid,
         favorite: false,
       });
     }
 
     // Process subgroups
     for (const subgroup of group.groups) {
-      processGroup(subgroup, folderId);
+      processGroup(subgroup, group === db.getDefaultGroup() ? undefined : groupUuid);
     }
   }
 

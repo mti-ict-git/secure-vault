@@ -2,10 +2,11 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { PasswordEntry, Folder, VaultState } from '@/types/vault';
 import { get, post, getBinary, postForm } from '@/lib/api';
 import { decryptVaultSnapshot, encryptVaultSnapshot, deserializeEncryptedSnapshot, serializeEncryptedSnapshot, type VaultSnapshotV1 } from '@/lib/crypto/vault';
-import { openSealed } from '@/lib/crypto/box';
+import { openSealed, sealToRecipient } from '@/lib/crypto/box';
 import { decryptPrivateKeys, type PrivateKeysPlain, type EncryptedPrivateKeysV1 } from '@/lib/crypto/privateKeys';
 import { base64ToBytes, bytesToBase64 } from '@/lib/crypto/encoding';
 import { getSodium } from '@/lib/crypto/sodium';
+import type { KdbxImportedEntry, KdbxImportedFolder } from '@/lib/kdbx-utils';
 
 const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
@@ -16,6 +17,8 @@ interface VaultRecord {
   vault_key_wrapped_for_user: string;
   version: number;
 }
+
+type CreateVaultResponse = { id?: string; error?: string };
 
 interface VaultKeys {
   privateKeys: PrivateKeysPlain;
@@ -162,11 +165,33 @@ export function useVault() {
       return { entries: [], folders: [], vaultId: null };
     }
 
-    const vaultRecords = res.body.items;
+    let vaultRecords = res.body.items;
     setVaults(vaultRecords);
 
     if (vaultRecords.length === 0) {
-      return { entries: [], folders: [], vaultId: null };
+      const vaultKey = crypto.getRandomValues(new Uint8Array(32));
+      const wrapped = await sealToRecipient(keys.privateKeys.enc_pk_b64, vaultKey);
+      const createRes = await post<CreateVaultResponse>('/vaults', {
+        kind: 'personal',
+        version: 1,
+        vault_key_wrapped: wrapped,
+      });
+      const id = createRes.body?.id;
+      if (!createRes.ok || typeof id !== 'string') {
+        return { entries: [], folders: [], vaultId: null };
+      }
+      vaultRecords = [
+        {
+          id,
+          kind: 'personal',
+          team_id: null,
+          vault_key_wrapped_for_user: wrapped,
+          version: 1,
+        },
+      ];
+      keys.vaultKeys.set(id, vaultKey);
+      setVaults(vaultRecords);
+      return { entries: [], folders: [], vaultId: id };
     }
 
     // Decrypt vault keys and fetch blobs for each vault
@@ -189,16 +214,18 @@ export function useVault() {
         }
 
         // Fetch the latest blob (vault snapshot)
-        const blobsRes = await get<{ blobs: { id: string; blob_type: string }[] }>(
+        const blobsRes = await get<{ items: { id: string; blob_type: string }[] }>(
           `/vaults/${vault.id}/blobs`
         );
         
-        if (!blobsRes.ok || !blobsRes.body?.blobs?.length) {
+        if (!blobsRes.ok || !blobsRes.body?.items?.length) {
           continue;
         }
 
-        // Find the latest vault_snapshot blob
-        const snapshotBlob = blobsRes.body.blobs.find(b => b.blob_type === 'vault_snapshot');
+        // Find the latest snapshot blob
+        const snapshotBlob =
+          blobsRes.body.items.find((b) => b.blob_type === 'snapshot') ||
+          blobsRes.body.items.find((b) => b.blob_type === 'vault_snapshot');
         if (!snapshotBlob) continue;
 
         // Download and decrypt the blob
@@ -240,7 +267,7 @@ export function useVault() {
       }
     }
 
-    return { entries: allEntries, folders: allFolders, vaultId: primaryVaultId };
+    return { entries: allEntries, folders: allFolders, vaultId: primaryVaultId || vaultRecords[0]?.id || null };
   };
 
   const saveVaultSnapshot = useCallback(async (entries: PasswordEntry[], folders: Folder[]) => {
@@ -290,13 +317,16 @@ export function useVault() {
 
     const form = new FormData();
     form.append('meta', JSON.stringify({
-      blob_type: 'vault_snapshot',
+      blob_type: 'snapshot',
       content_sha256: hashHex,
       size_bytes: bytes.length,
     }));
     form.append('file', new Blob([bytesBuffer], { type: 'application/octet-stream' }));
 
-    await postForm(`/vaults/${currentVaultId}/blobs`, form);
+    const res = await postForm<{ id?: string; error?: string }>(`/vaults/${currentVaultId}/blobs`, form);
+    if (!res.ok) {
+      console.error('Failed to save vault snapshot:', res.status, res.body);
+    }
   }, [currentVaultId]);
 
   const unlock = useCallback(async (masterPassword: string): Promise<boolean> => {
@@ -412,22 +442,36 @@ export function useVault() {
   }, [resetInactivityTimer, saveVaultSnapshot]);
 
   const importEntries = useCallback(async (
-    newEntries: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>[],
-    newFolders: Omit<Folder, 'id'>[]
+    newEntries: KdbxImportedEntry[],
+    newFolders: KdbxImportedFolder[]
   ) => {
-    // Add folders with generated IDs
     const folderIdMap = new Map<string, string>();
-    const foldersWithIds: Folder[] = newFolders.map(folder => {
-      const id = crypto.randomUUID();
-      if (folder.name) {
-        folderIdMap.set(folder.name, id);
-      }
-      return { ...folder, id };
+    for (const folder of newFolders) {
+      folderIdMap.set(folder.sourceId, crypto.randomUUID());
+    }
+
+    const foldersWithIds: Folder[] = newFolders.map((folder) => {
+      const id = folderIdMap.get(folder.sourceId) || crypto.randomUUID();
+      const parentId = folder.parentSourceId ? folderIdMap.get(folder.parentSourceId) : undefined;
+      return {
+        id,
+        name: folder.name,
+        icon: folder.icon,
+        parentId,
+        teamId: folder.teamId,
+      };
     });
 
     // Add entries with generated IDs
     const entriesWithIds: PasswordEntry[] = newEntries.map(entry => ({
-      ...entry,
+      title: entry.title,
+      username: entry.username,
+      password: entry.password,
+      url: entry.url,
+      notes: entry.notes,
+      favorite: entry.favorite,
+      teamId: entry.teamId,
+      folderId: entry.folderSourceId ? folderIdMap.get(entry.folderSourceId) : undefined,
       id: crypto.randomUUID(),
       createdAt: new Date(),
       updatedAt: new Date(),

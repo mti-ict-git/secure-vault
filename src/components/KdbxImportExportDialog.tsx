@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Upload, Download, FileKey, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import {
   Dialog,
@@ -18,20 +18,24 @@ import {
   exportKdbx,
   downloadFile,
   isValidKdbxFile,
+  KdbxImportedEntry,
+  KdbxImportedFolder,
   KdbxImportResult,
 } from '@/lib/kdbx-utils';
 
 interface KdbxImportExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialTab?: 'import' | 'export';
   entries: PasswordEntry[];
   folders: Folder[];
-  onImport: (entries: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>[], folders: Omit<Folder, 'id'>[]) => void;
+  onImport: (entries: KdbxImportedEntry[], folders: KdbxImportedFolder[]) => void;
 }
 
 export function KdbxImportExportDialog({
   open,
   onOpenChange,
+  initialTab,
   entries,
   folders,
   onImport,
@@ -57,6 +61,11 @@ export function KdbxImportExportDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const keyFileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (!open) return;
+    if (initialTab) setActiveTab(initialTab);
+  }, [open, initialTab]);
+
   const resetImportState = () => {
     setImportFile(null);
     setImportKeyFile(null);
@@ -75,10 +84,22 @@ export function KdbxImportExportDialog({
     setExportSuccess(false);
   };
 
-  const handleClose = () => {
+  const close = () => {
     resetImportState();
     resetExportState();
     onOpenChange(false);
+  };
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      onOpenChange(true);
+      return;
+    }
+    close();
+  };
+
+  const handleClose = () => {
+    close();
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,7 +148,7 @@ export function KdbxImportExportDialog({
   const confirmImport = () => {
     if (importResult) {
       onImport(importResult.entries, importResult.folders);
-      handleClose();
+      close();
     }
   };
 
@@ -161,7 +182,7 @@ export function KdbxImportExportDialog({
       
       // Auto-close after success
       setTimeout(() => {
-        handleClose();
+        close();
       }, 2000);
     } catch (error) {
       console.error('Export error:', error);
@@ -179,7 +200,7 @@ export function KdbxImportExportDialog({
   const personalFolderCount = folders.filter(f => !f.teamId).length;
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

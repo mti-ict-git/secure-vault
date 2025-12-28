@@ -37,7 +37,10 @@ export const config = {
   uploads: {
     maxSize: toNumber(process.env.UPLOAD_MAX_SIZE, 10 * 1024 * 1024),
     allowed: (process.env.UPLOAD_ALLOWED_TYPES ||
-      "image/jpeg,image/png,application/pdf,application/octet-stream,application/json").split(","),
+      "image/jpeg,image/png,application/pdf,application/octet-stream,application/json")
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
   },
   db: {
     server: process.env.DB_SERVER || "",

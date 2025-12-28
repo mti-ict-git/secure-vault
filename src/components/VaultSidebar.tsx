@@ -51,6 +51,7 @@ interface VaultSidebarProps {
   onEditTeam: (team: Team) => void;
   onDeleteTeam: (teamId: string) => void;
   onManageMembers: (team: Team) => void;
+  onOpenKdbxDialog: (tab: 'import' | 'export') => void;
 }
 
 const FOLDER_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -80,6 +81,7 @@ export function VaultSidebar({
   onEditTeam,
   onDeleteTeam,
   onManageMembers,
+  onOpenKdbxDialog,
 }: VaultSidebarProps) {
   const [teamsExpanded, setTeamsExpanded] = useState(true);
   const [foldersExpanded, setFoldersExpanded] = useState(true);
@@ -310,11 +312,17 @@ export function VaultSidebar({
 
       {/* Bottom actions */}
       <div className="p-3 border-t border-border space-y-1">
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+        <button
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          onClick={() => onOpenKdbxDialog('import')}
+        >
           <Import className="w-4 h-4" />
           <span>Import .kdbx</span>
         </button>
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+        <button
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          onClick={() => onOpenKdbxDialog('export')}
+        >
           <FileDown className="w-4 h-4" />
           <span>Export Vault</span>
         </button>

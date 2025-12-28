@@ -10,6 +10,7 @@ import { TeamMembersDialog } from '@/components/TeamMembersDialog';
 import { KdbxImportExportDialog } from '@/components/KdbxImportExportDialog';
 import { SecurityDashboard } from '@/components/SecurityDashboard';
 import { PasswordEntry, Folder, Team, TeamInvite } from '@/types/vault';
+import type { KdbxImportedEntry, KdbxImportedFolder } from '@/lib/kdbx-utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,7 +42,7 @@ interface VaultDashboardProps {
   onCancelInvite: (inviteId: string) => void;
   getTeamInvites: (teamId: string) => TeamInvite[];
   // Import/Export
-  onImportEntries: (entries: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>[], folders: Omit<Folder, 'id'>[]) => void;
+  onImportEntries: (entries: KdbxImportedEntry[], folders: KdbxImportedFolder[]) => void;
 }
 
 export function VaultDashboard({
@@ -72,6 +73,7 @@ export function VaultDashboard({
   const [editEntry, setEditEntry] = useState<PasswordEntry | null>(null);
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
   const [kdbxDialogOpen, setKdbxDialogOpen] = useState(false);
+  const [kdbxDialogTab, setKdbxDialogTab] = useState<'import' | 'export'>('import');
   
   // Team dialogs
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
@@ -83,6 +85,11 @@ export function VaultDashboard({
     () => (membersTeamId ? teams.find(t => t.id === membersTeamId) || null : null),
     [membersTeamId, teams]
   );
+
+  const openKdbxDialog = (tab: 'import' | 'export') => {
+    setKdbxDialogTab(tab);
+    setKdbxDialogOpen(true);
+  };
 
   // Get personal entries (no teamId)
   const personalEntries = useMemo(() => entries.filter(e => !e.teamId), [entries]);
@@ -211,6 +218,7 @@ export function VaultDashboard({
         }}
         onDeleteTeam={(id) => setDeleteTeamId(id)}
         onManageMembers={(team) => setMembersTeamId(team.id)}
+        onOpenKdbxDialog={openKdbxDialog}
       />
 
       <main className="flex-1 flex flex-col overflow-hidden">
@@ -227,7 +235,7 @@ export function VaultDashboard({
             </div>
             
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" onClick={() => setKdbxDialogOpen(true)} title="Import/Export KeePass">
+              <Button variant="outline" size="icon" onClick={() => openKdbxDialog('import')} title="Import/Export KeePass">
                 <FileKey className="w-4 h-4" />
               </Button>
               <Button variant="outline" size="icon">
@@ -432,6 +440,7 @@ export function VaultDashboard({
       <KdbxImportExportDialog
         open={kdbxDialogOpen}
         onOpenChange={setKdbxDialogOpen}
+        initialTab={kdbxDialogTab}
         entries={entries}
         folders={folders}
         onImport={(importedEntries, importedFolders) => {
