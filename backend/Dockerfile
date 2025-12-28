@@ -13,7 +13,7 @@ COPY scripts ./scripts
 RUN npm run build
 
 ENV NODE_ENV=production
-EXPOSE 8082
+EXPOSE 8084
 
 ENV RUN_MIGRATIONS=false
 

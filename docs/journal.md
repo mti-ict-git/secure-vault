@@ -138,3 +138,6 @@
 ## 2025-12-28 23:34:04 +08:00
 - Made backend container startup resilient by making migrations optional via RUN_MIGRATIONS.
 
+## 2025-12-28 23:48:11 +08:00
+- Fixed nginx /api upstream port to match backend container port 8084.
+
