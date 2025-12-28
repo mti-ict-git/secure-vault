@@ -32,6 +32,7 @@ export interface Team {
   id: string;
   name: string;
   description?: string;
+  vaultId?: string;
   members: TeamMember[];
   createdAt: Date;
   createdBy: string;
@@ -44,8 +45,8 @@ export interface TeamMember {
   userId: string;
   email: string;
   name: string;
-  role: 'owner' | 'admin' | 'member';
-  joinedAt: Date;
+  role: 'owner' | 'admin' | 'editor' | 'viewer';
+  joinedAt?: Date;
   // In production: team key encrypted with member's public key
   encryptedKeyShare?: string;
 }
@@ -54,7 +55,7 @@ export interface TeamInvite {
   id: string;
   teamId: string;
   email: string;
-  role: 'admin' | 'member';
+  role: 'admin' | 'editor' | 'viewer';
   invitedBy: string;
   createdAt: Date;
   expiresAt: Date;

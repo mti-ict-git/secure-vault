@@ -4,7 +4,8 @@ import {
   Mail,
   Crown,
   Shield,
-  User,
+  Eye,
+  Pencil,
   MoreVertical,
   Trash2,
   UserPlus,
@@ -43,16 +44,17 @@ interface TeamMembersDialogProps {
   onOpenChange: (open: boolean) => void;
   team: Team;
   invites: TeamInvite[];
-  onInviteMember: (email: string, role: 'admin' | 'member') => void;
+  onInviteMember: (email: string, role: 'admin' | 'editor' | 'viewer') => void;
   onRemoveMember: (memberId: string) => void;
-  onUpdateRole: (memberId: string, role: TeamMember['role']) => void;
+  onUpdateRole: (memberId: string, role: 'admin' | 'editor' | 'viewer') => void;
   onCancelInvite: (inviteId: string) => void;
 }
 
 const ROLE_CONFIG = {
   owner: { icon: Crown, label: 'Owner', color: 'text-warning' },
   admin: { icon: Shield, label: 'Admin', color: 'text-primary' },
-  member: { icon: User, label: 'Member', color: 'text-muted-foreground' },
+  editor: { icon: Pencil, label: 'Editor', color: 'text-muted-foreground' },
+  viewer: { icon: Eye, label: 'Viewer', color: 'text-muted-foreground' },
 };
 
 export function TeamMembersDialog({
@@ -66,7 +68,7 @@ export function TeamMembersDialog({
   onCancelInvite,
 }: TeamMembersDialogProps) {
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member');
+  const [inviteRole, setInviteRole] = useState<'admin' | 'editor' | 'viewer'>('viewer');
 
   const handleInvite = () => {
     if (!inviteEmail.trim() || !inviteEmail.includes('@')) {
@@ -119,12 +121,13 @@ export function TeamMembersDialog({
                 className="flex-1"
                 onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
               />
-              <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as 'admin' | 'member')}>
+              <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as 'admin' | 'editor' | 'viewer')}>
                 <SelectTrigger className="w-28">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="member">Member</SelectItem>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                  <SelectItem value="editor">Editor</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
@@ -220,9 +223,13 @@ export function TeamMembersDialog({
                               <Shield className="w-4 h-4 mr-2" />
                               Make Admin
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onUpdateRole(member.id, 'member')}>
-                              <User className="w-4 h-4 mr-2" />
-                              Make Member
+                            <DropdownMenuItem onClick={() => onUpdateRole(member.id, 'editor')}>
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Make Editor
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onUpdateRole(member.id, 'viewer')}>
+                              <Eye className="w-4 h-4 mr-2" />
+                              Make Viewer
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem

@@ -19,3 +19,11 @@
 - Enforced vault access checks for blob list/download/upload and vault sharing.
 - Filtered sync SSE events to only emit vault/team-relevant events per user.
 
+## 2025-12-28 18:50:21 +08:00
+- Replaced demo teams hook with backend API integration (teams, members, invites).
+- Aligned frontend team roles with backend roles (owner/admin/editor/viewer).
+- Kept Manage Members dialog synced to latest teams state.
+
+## 2025-12-28 18:58:05 +08:00
+- Fixed TypeScript TS5076 by adding parentheses around mixed nullish/OR fallback.
+

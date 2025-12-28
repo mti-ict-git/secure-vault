@@ -63,6 +63,15 @@ export const getUserById = async (userId: string) => {
   return r.recordset[0] || null;
 };
 
+export const getUserByEmail = async (email: string) => {
+  const pool = await getPool();
+  const r = await pool
+    .request()
+    .input("email", email)
+    .query("SELECT TOP 1 id, display_name, email FROM dbo.users WHERE email=@email");
+  return r.recordset[0] || null;
+};
+
 export const getPublicKeysByUserId = async (userId: string) => {
   const pool = await getPool();
   const r = await pool

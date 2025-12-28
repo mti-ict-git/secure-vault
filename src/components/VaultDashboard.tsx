@@ -35,9 +35,9 @@ interface VaultDashboardProps {
   onCreateTeam: (name: string, description?: string) => void;
   onUpdateTeam: (id: string, updates: { name: string; description?: string }) => void;
   onDeleteTeam: (id: string) => void;
-  onInviteMember: (teamId: string, email: string, role: 'admin' | 'member') => void;
+  onInviteMember: (teamId: string, email: string, role: 'admin' | 'editor' | 'viewer') => void;
   onRemoveMember: (teamId: string, memberId: string) => void;
-  onUpdateMemberRole: (teamId: string, memberId: string, role: 'owner' | 'admin' | 'member') => void;
+  onUpdateMemberRole: (teamId: string, memberId: string, role: 'admin' | 'editor' | 'viewer') => void;
   onCancelInvite: (inviteId: string) => void;
   getTeamInvites: (teamId: string) => TeamInvite[];
   // Import/Export
@@ -76,8 +76,13 @@ export function VaultDashboard({
   // Team dialogs
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
   const [editTeam, setEditTeam] = useState<Team | null>(null);
-  const [membersTeam, setMembersTeam] = useState<Team | null>(null);
+  const [membersTeamId, setMembersTeamId] = useState<string | null>(null);
   const [deleteTeamId, setDeleteTeamId] = useState<string | null>(null);
+
+  const membersTeam = useMemo(
+    () => (membersTeamId ? teams.find(t => t.id === membersTeamId) || null : null),
+    [membersTeamId, teams]
+  );
 
   // Get personal entries (no teamId)
   const personalEntries = useMemo(() => entries.filter(e => !e.teamId), [entries]);
@@ -205,7 +210,7 @@ export function VaultDashboard({
           setCreateTeamOpen(true);
         }}
         onDeleteTeam={(id) => setDeleteTeamId(id)}
-        onManageMembers={(team) => setMembersTeam(team)}
+        onManageMembers={(team) => setMembersTeamId(team.id)}
       />
 
       <main className="flex-1 flex flex-col overflow-hidden">
@@ -288,7 +293,7 @@ export function VaultDashboard({
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => setMembersTeam(currentTeam)}
+                        onClick={() => setMembersTeamId(currentTeam.id)}
                       >
                         <Users className="w-4 h-4 mr-1" />
                         Manage
@@ -371,7 +376,7 @@ export function VaultDashboard({
       {membersTeam && (
         <TeamMembersDialog
           open={!!membersTeam}
-          onOpenChange={(open) => !open && setMembersTeam(null)}
+          onOpenChange={(open) => !open && setMembersTeamId(null)}
           team={membersTeam}
           invites={getTeamInvites(membersTeam.id)}
           onInviteMember={(email, role) => onInviteMember(membersTeam.id, email, role)}
