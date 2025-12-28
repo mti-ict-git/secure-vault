@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+dist
+**/dist
+backend/uploads
+backend/logs
+logs
+.git
+.trae
+.vscode
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+
