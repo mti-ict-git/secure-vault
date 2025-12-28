@@ -8,6 +8,7 @@ services:
       UPLOAD_STORAGE: db
       BACKEND_PORT: 8084
       RUN_MIGRATIONS: "true"
+      CORS_ORIGIN: https://securepass.merdekabattery.com
     ports:
       - "8084:8084"
 
