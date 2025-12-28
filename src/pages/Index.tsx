@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { UnlockScreen } from '@/components/UnlockScreen';
 import { VaultDashboard } from '@/components/VaultDashboard';
+import { KeySetupDialog } from '@/components/KeySetupDialog';
 import { useVault } from '@/hooks/useVault';
 import { useTeams } from '@/hooks/useTeams';
 
@@ -9,6 +10,7 @@ const Index = () => {
     isLocked,
     entries,
     folders,
+    needsKeySetup,
     unlock,
     lock,
     addEntry,
@@ -16,6 +18,7 @@ const Index = () => {
     deleteEntry,
     toggleFavorite,
     importEntries,
+    onKeySetupComplete,
   } = useVault();
 
   const {
@@ -34,6 +37,10 @@ const Index = () => {
   useEffect(() => {
     document.documentElement.classList.add('dark');
   }, []);
+
+  if (needsKeySetup) {
+    return <KeySetupDialog open={true} onComplete={onKeySetupComplete} />;
+  }
 
   if (isLocked) {
     return <UnlockScreen onUnlock={unlock} />;

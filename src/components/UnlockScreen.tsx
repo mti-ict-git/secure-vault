@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 
 interface UnlockScreenProps {
-  onUnlock: (password: string) => boolean;
+  onUnlock: (password: string) => Promise<boolean> | boolean;
 }
 
 export function UnlockScreen({ onUnlock }: UnlockScreenProps) {
@@ -20,17 +20,21 @@ export function UnlockScreen({ onUnlock }: UnlockScreenProps) {
     setError('');
     setIsUnlocking(true);
 
-    // Simulate key derivation time
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const success = onUnlock(password);
-    
-    if (!success) {
-      setError('Invalid master password. Must be at least 8 characters.');
+    try {
+      const result = onUnlock(password);
+      const success = result instanceof Promise ? await result : result;
+      
+      if (!success) {
+        setError('Invalid master password or decryption failed.');
+        setPassword('');
+      }
+    } catch (err) {
+      console.error('Unlock error:', err);
+      setError('Failed to unlock vault. Please try again.');
       setPassword('');
+    } finally {
+      setIsUnlocking(false);
     }
-    
-    setIsUnlocking(false);
   };
 
   return (
