@@ -27,3 +27,7 @@
 ## 2025-12-28 18:58:05 +08:00
 - Fixed TypeScript TS5076 by adding parentheses around mixed nullish/OR fallback.
 
+## 2025-12-28 19:23:43 +08:00
+- Fixed first-time key setup flow to match backend keys API contract.
+- Store encrypted private key as JSON string and validate/parse on unlock.
+

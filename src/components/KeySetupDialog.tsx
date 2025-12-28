@@ -67,12 +67,13 @@ export function KeySetupDialog({ open, onComplete }: KeySetupDialogProps) {
 
       // Encrypt private keys with passphrase
       const encryptedPrivateKey = await encryptPrivateKeys(passphrase, plainKeys);
+      const encryptedPrivateKeyJson = JSON.stringify(encryptedPrivateKey);
 
       // Register keys with backend
       const res = await post('/keys/register', {
         public_sign_key: signingKp.publicKey_b64,
         public_enc_key: encryptionKp.publicKey_b64,
-        encrypted_private_key: encryptedPrivateKey,
+        encrypted_private_key: encryptedPrivateKeyJson,
       });
 
       if (!res.ok) {

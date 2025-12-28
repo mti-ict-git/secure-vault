@@ -22,6 +22,51 @@ interface VaultKeys {
   vaultKeys: Map<string, Uint8Array>; // vaultId -> decrypted vault key
 }
 
+type KeysMeResponse = {
+  public_sign_key?: string | null;
+  public_enc_key?: string | null;
+  encrypted_private_key?: string | null;
+};
+
+const hasRegisteredKeys = (body: KeysMeResponse | null | undefined): boolean => {
+  return !!(body?.public_sign_key && body?.public_enc_key && body?.encrypted_private_key);
+};
+
+const isEncryptedPrivateKeysV1 = (value: unknown): value is EncryptedPrivateKeysV1 => {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+
+  if (obj.v !== 1) return false;
+  if (typeof obj.kdf !== 'object' || obj.kdf === null) return false;
+  if (typeof obj.enc !== 'object' || obj.enc === null) return false;
+
+  const kdf = obj.kdf as Record<string, unknown>;
+  if (kdf.name !== 'argon2id') return false;
+  if (typeof kdf.salt_b64 !== 'string') return false;
+  if (typeof kdf.iterations !== 'number') return false;
+  if (typeof kdf.memorySize !== 'number') return false;
+  if (typeof kdf.parallelism !== 'number') return false;
+  if (typeof kdf.hashLength !== 'number') return false;
+
+  const enc = obj.enc as Record<string, unknown>;
+  if (enc.v !== 1) return false;
+  if (enc.alg !== 'xchacha20poly1305_ietf') return false;
+  if (typeof enc.nonce_b64 !== 'string') return false;
+  if (typeof enc.cipher_b64 !== 'string') return false;
+  if (enc.ad_b64 !== undefined && typeof enc.ad_b64 !== 'string') return false;
+
+  return true;
+};
+
+const parseEncryptedPrivateKeys = (json: string): EncryptedPrivateKeysV1 | null => {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return isEncryptedPrivateKeysV1(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
 export function useVault() {
   const [state, setState] = useState<VaultState>({
     isLocked: true,
@@ -47,9 +92,9 @@ export function useVault() {
       }
 
       try {
-        const res = await get<{ has_keys: boolean }>('/keys/me');
+        const res = await get<KeysMeResponse>('/keys/me');
         if (res.ok) {
-          setNeedsKeySetup(res.body?.has_keys === false);
+          setNeedsKeySetup(!hasRegisteredKeys(res.body));
         } else if (res.status === 401) {
           // Not authenticated, will be handled by login flow
           setNeedsKeySetup(false);
@@ -76,10 +121,10 @@ export function useVault() {
     }, INACTIVITY_TIMEOUT);
   }, []);
 
-  const checkKeysRegistered = async (): Promise<boolean> => {
-    const res = await get<{ has_keys: boolean }>('/keys/me');
-    return res.ok && res.body?.has_keys === true;
-  };
+  const checkKeysRegistered = useCallback(async (): Promise<boolean> => {
+    const res = await get<KeysMeResponse>('/keys/me');
+    return res.ok && hasRegisteredKeys(res.body);
+  }, []);
 
   const fetchAndDecryptVaults = async (keys: VaultKeys): Promise<{
     entries: PasswordEntry[];
@@ -238,14 +283,21 @@ export function useVault() {
       }
 
       // Fetch encrypted private key from server
-      const keysRes = await get<{ encrypted_private_key: EncryptedPrivateKeysV1 }>('/keys/me');
-      if (!keysRes.ok || !keysRes.body?.encrypted_private_key) {
+      const keysRes = await get<KeysMeResponse>('/keys/me');
+      const encryptedPrivateKeyJson = keysRes.body?.encrypted_private_key;
+      if (!keysRes.ok || !encryptedPrivateKeyJson) {
         console.error('Failed to fetch private keys');
         return false;
       }
 
+      const encryptedPrivateKey = parseEncryptedPrivateKeys(encryptedPrivateKeyJson);
+      if (!encryptedPrivateKey) {
+        console.error('Invalid encrypted private key format');
+        return false;
+      }
+
       // Decrypt private keys with master password
-      const privateKeys = await decryptPrivateKeys(masterPassword, keysRes.body.encrypted_private_key);
+      const privateKeys = await decryptPrivateKeys(masterPassword, encryptedPrivateKey);
       
       const keys: VaultKeys = {
         privateKeys,
@@ -270,7 +322,7 @@ export function useVault() {
       console.error('Unlock failed:', err);
       return false;
     }
-  }, [resetInactivityTimer]);
+  }, [checkKeysRegistered, resetInactivityTimer]);
 
   const lock = useCallback(() => {
     // Clear sensitive data from memory
