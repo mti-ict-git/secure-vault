@@ -109,6 +109,24 @@ export function useVault() {
     checkKeys();
   }, []);
 
+  const lock = useCallback(() => {
+    keysRef.current = null;
+    setVaults([]);
+    setCurrentVaultId(null);
+
+    setState({
+      isLocked: true,
+      entries: [],
+      folders: [],
+      lastActivity: new Date(),
+    });
+
+    if (inactivityTimer.current) {
+      clearTimeout(inactivityTimer.current);
+      inactivityTimer.current = null;
+    }
+  }, []);
+
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimer.current) {
       clearTimeout(inactivityTimer.current);
@@ -119,7 +137,7 @@ export function useVault() {
     inactivityTimer.current = setTimeout(() => {
       lock();
     }, INACTIVITY_TIMEOUT);
-  }, []);
+  }, [lock]);
 
   const checkKeysRegistered = useCallback(async (): Promise<boolean> => {
     const res = await get<KeysMeResponse>('/keys/me');
@@ -217,7 +235,7 @@ export function useVault() {
     return { entries: allEntries, folders: allFolders, vaultId: primaryVaultId };
   };
 
-  const saveVaultSnapshot = async (entries: PasswordEntry[], folders: Folder[]) => {
+  const saveVaultSnapshot = useCallback(async (entries: PasswordEntry[], folders: Folder[]) => {
     if (!currentVaultId || !keysRef.current) return;
 
     const vaultKey = keysRef.current.vaultKeys.get(currentVaultId);
@@ -271,7 +289,7 @@ export function useVault() {
     form.append('file', new Blob([bytesBuffer], { type: 'application/octet-stream' }));
 
     await postForm(`/vaults/${currentVaultId}/blobs`, form);
-  };
+  }, [currentVaultId]);
 
   const unlock = useCallback(async (masterPassword: string): Promise<boolean> => {
     try {
@@ -324,25 +342,6 @@ export function useVault() {
     }
   }, [checkKeysRegistered, resetInactivityTimer]);
 
-  const lock = useCallback(() => {
-    // Clear sensitive data from memory
-    keysRef.current = null;
-    setVaults([]);
-    setCurrentVaultId(null);
-    
-    setState({
-      isLocked: true,
-      entries: [],
-      folders: [],
-      lastActivity: new Date(),
-    });
-    
-    if (inactivityTimer.current) {
-      clearTimeout(inactivityTimer.current);
-      inactivityTimer.current = null;
-    }
-  }, []);
-
   const addEntry = useCallback(async (entry: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>) => {
     const newEntry: PasswordEntry = {
       ...entry,
@@ -361,7 +360,7 @@ export function useVault() {
       return newState;
     });
     resetInactivityTimer();
-  }, [resetInactivityTimer]);
+  }, [resetInactivityTimer, saveVaultSnapshot]);
 
   const updateEntry = useCallback(async (id: string, updates: Partial<PasswordEntry>) => {
     setState(prev => {
@@ -376,7 +375,7 @@ export function useVault() {
       return newState;
     });
     resetInactivityTimer();
-  }, [resetInactivityTimer]);
+  }, [resetInactivityTimer, saveVaultSnapshot]);
 
   const deleteEntry = useCallback(async (id: string) => {
     setState(prev => {
@@ -387,7 +386,7 @@ export function useVault() {
       return newState;
     });
     resetInactivityTimer();
-  }, [resetInactivityTimer]);
+  }, [resetInactivityTimer, saveVaultSnapshot]);
 
   const toggleFavorite = useCallback(async (id: string) => {
     setState(prev => {
@@ -402,7 +401,7 @@ export function useVault() {
       return newState;
     });
     resetInactivityTimer();
-  }, [resetInactivityTimer]);
+  }, [resetInactivityTimer, saveVaultSnapshot]);
 
   const importEntries = useCallback(async (
     newEntries: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>[],
@@ -437,7 +436,7 @@ export function useVault() {
       return newState;
     });
     resetInactivityTimer();
-  }, [resetInactivityTimer]);
+  }, [resetInactivityTimer, saveVaultSnapshot]);
 
   const getPersonalEntries = useCallback(() => {
     return state.entries.filter(e => !e.teamId);

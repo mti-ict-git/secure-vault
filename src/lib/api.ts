@@ -15,11 +15,29 @@ const parse = async (res: Response): Promise<ApiResponse> => {
   return { ok: res.ok, status: res.status, body };
 };
 
+type UnauthorizedEventDetail = {
+  path: string;
+  status: 401;
+};
+
+const notifyUnauthorized = (path: string) => {
+  localStorage.removeItem("sv.jwt");
+  const detail: UnauthorizedEventDetail = { path, status: 401 };
+  window.dispatchEvent(new CustomEvent<UnauthorizedEventDetail>("sv:unauthorized", { detail }));
+};
+
 export const request = async <T = unknown>(path: string, init: RequestInit = {}): Promise<ApiResponse<T>> => {
   const token = localStorage.getItem("sv.jwt");
   const body = init.body;
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   const isBlob = typeof Blob !== "undefined" && body instanceof Blob;
+  const initHeaders: Record<string, string> = (() => {
+    const h = init.headers;
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(Array.from(h.entries()));
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h as Record<string, string>;
+  })();
   const baseHeaders: Record<string, string> = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
@@ -27,13 +45,14 @@ export const request = async <T = unknown>(path: string, init: RequestInit = {})
   const headers = {
     ...contentTypeHeaders,
     ...baseHeaders,
-    ...(init.headers || {}),
+    ...initHeaders,
   } as Record<string, string>;
   const res = await fetch(`${BASE}${path}`, { ...init, headers: headers as HeadersInit });
+  const parsed = (await parse(res)) as ApiResponse<T>;
   if (res.status === 401) {
-    localStorage.removeItem("sv.jwt");
+    notifyUnauthorized(path);
   }
-  return parse(res) as Promise<ApiResponse<T>>;
+  return parsed;
 };
 
 export const get = <T = unknown>(path: string) => request<T>(path);
@@ -45,13 +64,20 @@ export const postForm = async <T = unknown>(path: string, form: FormData): Promi
 
 export const getBinary = async (path: string, init: RequestInit = {}): Promise<ApiBinaryResponse> => {
   const token = localStorage.getItem("sv.jwt");
+  const initHeaders: Record<string, string> = (() => {
+    const h = init.headers;
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(Array.from(h.entries()));
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h as Record<string, string>;
+  })();
   const headers = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(init.headers || {}),
+    ...initHeaders,
   } as Record<string, string>;
   const res = await fetch(`${BASE}${path}`, { ...init, headers: headers as HeadersInit });
   if (res.status === 401) {
-    localStorage.removeItem("sv.jwt");
+    notifyUnauthorized(path);
   }
   const buf = await res.arrayBuffer();
   return { ok: res.ok, status: res.status, data: new Uint8Array(buf) };

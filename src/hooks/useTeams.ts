@@ -104,6 +104,7 @@ export function useTeams() {
   const refreshTeamMembers = useCallback(async (teamId: string) => {
     const r = await get<ListMembersResponse>(`/teams/${teamId}/members`);
     if (!r.ok) {
+      if (r.status === 401) return;
       toast.error('Failed to load team members');
       return;
     }
@@ -121,6 +122,7 @@ export function useTeams() {
   const refreshTeams = useCallback(async () => {
     const r = await get<ListTeamsResponse>('/teams');
     if (!r.ok) {
+      if (r.status === 401) return;
       toast.error('Failed to load teams');
       return;
     }

@@ -31,3 +31,8 @@
 - Fixed first-time key setup flow to match backend keys API contract.
 - Store encrypted private key as JSON string and validate/parse on unlock.
 
+## 2025-12-28 19:35:23 +08:00
+- Fixed auth state desync when API requests return 401.
+- Dispatch global unauthorized event to clear JWT and return to login.
+- Suppressed team-loading toasts during unauthorized state.
+

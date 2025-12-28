@@ -8,6 +8,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<AuthUser>(null);
 
   useEffect(() => {
+    const onUnauthorized = () => {
+      doLogout();
+      setJwt(null);
+      setUser(null);
+    };
+
+    window.addEventListener("sv:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("sv:unauthorized", onUnauthorized);
+  }, []);
+
+  useEffect(() => {
     const t = localStorage.getItem("sv.jwt");
     if (t) {
       setJwt(t);
