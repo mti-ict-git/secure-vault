@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTheme } from "next-themes";
+import { updateThemePreference, type ThemePreference } from "@/lib/auth";
 import { loginLdap, logout as doLogout } from "@/lib/auth";
 import { request } from "@/lib/api";
 import { AuthContext, type AuthContextValue, type AuthUser } from "@/contexts/auth";
@@ -6,6 +8,7 @@ import { AuthContext, type AuthContextValue, type AuthUser } from "@/contexts/au
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [jwt, setJwt] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser>(null);
+  const { setTheme, theme } = useTheme();
 
   useEffect(() => {
     const onUnauthorized = (ev: Event) => {
@@ -20,16 +23,36 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     window.addEventListener("sv:unauthorized", onUnauthorized);
     return () => window.removeEventListener("sv:unauthorized", onUnauthorized);
-  }, []);
+  }, [setTheme]);
+
+  useEffect(() => {
+    const t = theme as ThemePreference | undefined;
+    if (!jwt || !user || !t) return;
+    const current = (user as { theme_preference?: ThemePreference }).theme_preference;
+    if (current === t) return;
+    void updateThemePreference(t).then((res) => {
+      if (res.ok) {
+        setUser((prev) => (prev ? { ...prev, theme_preference: t } : prev));
+      }
+    });
+  }, [jwt, user, theme]);
 
   useEffect(() => {
     const t = localStorage.getItem("sv.jwt");
     if (!t) return;
 
-    request<{ id?: string }>("/me", { headers: { Authorization: `Bearer ${t}` } }).then((res) => {
+    request<{ id?: string; display_name?: string; email?: string; theme_preference?: "light" | "dark" | "system" }>("/me", { headers: { Authorization: `Bearer ${t}` } }).then((res) => {
       if (res.ok && res.body?.id) {
         setJwt(t);
-        setUser({ id: res.body.id });
+        const u = {
+          id: res.body.id,
+          display_name: res.body.display_name,
+          theme_preference: res.body.theme_preference,
+        } as AuthUser;
+        setUser(u);
+        if (u && u.theme_preference) {
+          setTheme(u.theme_preference);
+        }
         return;
       }
       doLogout();
@@ -42,7 +65,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const r = await loginLdap(username, password);
     if (r.ok === false) return { ok: false, error: r.error };
 
-    const me = await request<{ id?: string }>("/me", {
+    const me = await request<{ id?: string; display_name?: string; email?: string; theme_preference?: "light" | "dark" | "system" }>("/me", {
       headers: { Authorization: `Bearer ${r.token}` },
     });
     if (!me.ok || !me.body?.id) {
@@ -53,7 +76,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     setJwt(r.token);
-    setUser(r.user || { id: me.body.id });
+    const u = r.user || { id: me.body.id, display_name: me.body.display_name, theme_preference: me.body.theme_preference };
+    setUser(u);
+    if (u && (u as { theme_preference?: "light" | "dark" | "system" }).theme_preference) {
+      setTheme((u as { theme_preference?: "light" | "dark" | "system" }).theme_preference!);
+    }
     return { ok: true };
   };
 
@@ -71,7 +98,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       login,
       logout,
     }),
-    [user, jwt]
+    [user, jwt, login, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

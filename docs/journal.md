@@ -16,6 +16,21 @@
 - A11y: Add DialogDescription to add-entry and new-folder dialogs.
 - Fix ReferenceError by importing DialogDescription where used (VaultSidebar, AddEntryDialog).
 
+## 2025-12-29 20:25:53 +08:00
+- Add theme_preference column to users via migration.
+- Expose theme_preference on GET /me and add PATCH /me to update theme.
+- Persist theme toggle to profile when authenticated.
+- Load and apply user theme on login and session restore.
+- Update validators, repo, and UI ThemeToggle accordingly.
+- Ran ESLint and TypeScript no-emit checks; both completed successfully.
+
+## 2025-12-29 20:28:39 +08:00
+- Executed SQL migrations including 003_user_theme_preference.sql; all applied successfully.
+
+## 2025-12-29 20:32:56 +08:00
+- Persist theme on change automatically when authenticated (AuthContext effect).
+- Added optimistic update of user.theme_preference after successful PATCH /me.
+
 ## 2025-12-28 09:03:18 +08:00
 - Added `dev:full` script to run frontend and backend together.
 - Updated backend dev script to watch mode for auto-restart.

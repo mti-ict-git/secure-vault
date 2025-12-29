@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-export type AuthUser = { id: string; display_name?: string } | null;
+export type AuthUser = { id: string; display_name?: string; theme_preference?: "light" | "dark" | "system" } | null;
 
 export type AuthLoginResult = { ok: boolean; error?: string };
 

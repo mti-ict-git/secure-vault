@@ -69,7 +69,10 @@ export const getKeys = async (userId: string) => {
 
 export const getUserById = async (userId: string) => {
   const pool = await getPool();
-  const r = await pool.request().input("id", userId).query("SELECT id, display_name, email FROM dbo.users WHERE id=@id");
+  const r = await pool
+    .request()
+    .input("id", userId)
+    .query("SELECT id, display_name, email, theme_preference FROM dbo.users WHERE id=@id");
   return r.recordset[0] || null;
 };
 
@@ -91,6 +94,15 @@ export const getPublicKeysByUserId = async (userId: string) => {
       "SELECT id, display_name, email, public_sign_key, public_enc_key FROM dbo.users WHERE id=@id"
     );
   return r.recordset[0] || null;
+};
+
+export const setThemePreference = async (userId: string, theme: "light" | "dark" | "system") => {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("id", userId)
+    .input("theme", theme)
+    .query("UPDATE dbo.users SET theme_preference=@theme WHERE id=@id");
 };
 
 export const createSession = async (userId: string) => {

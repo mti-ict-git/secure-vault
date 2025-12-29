@@ -46,3 +46,7 @@ export const UpdateTeamSchema = z.object({
 export const UpdateRoleSchema = z.object({
   role: z.enum(["owner", "admin", "editor", "viewer"]),
 });
+
+export const ThemeUpdateSchema = z.object({
+  theme: z.enum(["light", "dark", "system"]),
+});

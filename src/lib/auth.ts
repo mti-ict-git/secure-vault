@@ -1,4 +1,4 @@
-import { post } from "./api";
+import { post, request } from "./api";
 
 type LoginUser = { id: string; display_name?: string };
 type LoginResponseBody = { token?: string; user?: LoginUser; error?: string };
@@ -20,4 +20,11 @@ export const loginLdap = async (username: string, password: string): Promise<Log
 
 export const logout = () => {
   localStorage.removeItem("sv.jwt");
+};
+
+export type ThemePreference = "light" | "dark" | "system";
+
+export const updateThemePreference = async (theme: ThemePreference): Promise<{ ok: boolean }> => {
+  const r = await request("/me", { method: "PATCH", body: JSON.stringify({ theme }) });
+  return { ok: r.ok };
 };
