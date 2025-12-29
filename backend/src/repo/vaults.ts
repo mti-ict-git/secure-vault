@@ -26,7 +26,27 @@ export const listVaultsForUser = async (userId: string) => {
     .request()
     .input("user_id", userId)
     .query(
-      "SELECT v.*, COALESCE(CASE WHEN v.owner_user_id=@user_id THEN v.vault_key_wrapped END, s.wrapped_key, tm.team_key_wrapped) as vault_key_wrapped_for_user, COALESCE(s.permissions, CASE WHEN tm.role IN ('owner','admin','editor') THEN 'write' ELSE 'read' END) as permissions FROM dbo.vaults v LEFT JOIN dbo.shares s ON s.source_vault_id=v.id AND s.target_user_id=@user_id LEFT JOIN dbo.team_members tm ON tm.team_id=v.team_id AND tm.user_id=@user_id AND tm.revoked_at IS NULL WHERE (v.owner_user_id=@user_id) OR (v.team_id IS NOT NULL AND tm.id IS NOT NULL AND tm.joined_at IS NOT NULL) OR (s.id IS NOT NULL)"
+      `SELECT v.*, 
+        COALESCE(
+          CASE WHEN v.owner_user_id=@user_id THEN v.vault_key_wrapped END,
+          s.wrapped_key,
+          tm_last.team_key_wrapped
+        ) as vault_key_wrapped_for_user,
+        COALESCE(
+          s.permissions,
+          CASE WHEN tm_last.role IN ('owner','admin','editor') THEN 'write' ELSE 'read' END
+        ) as permissions
+      FROM dbo.vaults v
+      LEFT JOIN dbo.shares s ON s.source_vault_id=v.id AND s.target_user_id=@user_id
+      OUTER APPLY (
+        SELECT TOP 1 tm2.*
+        FROM dbo.team_members tm2
+        WHERE tm2.team_id = v.team_id AND tm2.user_id=@user_id AND tm2.revoked_at IS NULL
+        ORDER BY tm2.invited_at DESC
+      ) tm_last
+      WHERE (v.owner_user_id=@user_id)
+        OR (v.team_id IS NOT NULL AND tm_last.id IS NOT NULL AND tm_last.joined_at IS NOT NULL)
+        OR (s.id IS NOT NULL)`
     );
   return r.recordset;
 };

@@ -62,14 +62,20 @@ export const teamRoutes = async (app: FastifyInstance) => {
     const teamId = (req.params as Params).id;
     const userId = req.user?.id;
     if (!userId) return reply.status(401).send({ error: "unauthorized" });
-    const role = await getUserRoleInTeam(teamId, userId);
-    if (!role || role !== "owner") {
-      return reply.status(403).send({ error: "forbidden" });
+    try {
+      const role = await getUserRoleInTeam(teamId, userId);
+      if (!role || role !== "owner") {
+        return reply.status(403).send({ error: "forbidden" });
+      }
+      await deleteTeam(teamId);
+      await writeAudit(userId, "team_delete", "team", teamId, {});
+      publishSyncEvent({ t: Date.now(), type: "team_delete", team_id: teamId, actor_user_id: userId });
+      return reply.send({ ok: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      req.log.error({ err: msg, teamId }, "deleteTeam failed");
+      return reply.status(500).send({ error: "internal_error" });
     }
-    await deleteTeam(teamId);
-    await writeAudit(userId, "team_delete", "team", teamId, {});
-    publishSyncEvent({ t: Date.now(), type: "team_delete", team_id: teamId, actor_user_id: userId });
-    return reply.send({ ok: true });
   });
   app.post("/:id/accept", async (req, reply) => {
     type Params = { id: string };
@@ -119,17 +125,23 @@ export const teamRoutes = async (app: FastifyInstance) => {
     const memberId = (req.params as Params).memberId;
     const userId = req.user?.id;
     if (!userId) return reply.status(401).send({ error: "unauthorized" });
-    const actorRole = await getUserRoleInTeam(teamId, userId);
-    if (!actorRole) return reply.status(403).send({ error: "forbidden" });
-    const member = await getTeamMemberById(memberId);
-    if (!member || member.team_id !== teamId) return reply.status(404).send({ error: "not_found" });
-    if (member.user_id === userId) return reply.status(403).send({ error: "forbidden" });
-    if (actorRole !== "owner") {
-      if (member.role === "owner" || member.role === "admin") return reply.status(403).send({ error: "forbidden" });
+    try {
+      const actorRole = await getUserRoleInTeam(teamId, userId);
+      if (!actorRole) return reply.status(403).send({ error: "forbidden" });
+      const member = await getTeamMemberById(memberId);
+      if (!member || member.team_id !== teamId) return reply.status(404).send({ error: "not_found" });
+      if (member.user_id === userId) return reply.status(403).send({ error: "forbidden" });
+      if (actorRole !== "owner") {
+        if (member.role === "owner" || member.role === "admin") return reply.status(403).send({ error: "forbidden" });
+      }
+      await removeMember(memberId);
+      await writeAudit(userId, "team_member_remove", "team_member", memberId, { team_id: teamId, target_user_id: member.user_id });
+      publishSyncEvent({ t: Date.now(), type: "team_member_remove", team_id: teamId, member_id: memberId, actor_user_id: userId });
+      return reply.send({ ok: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      req.log.error({ err: msg, teamId, memberId }, "removeMember failed");
+      return reply.status(500).send({ error: "internal_error" });
     }
-    await removeMember(memberId);
-    await writeAudit(userId, "team_member_remove", "team_member", memberId, { team_id: teamId, target_user_id: member.user_id });
-    publishSyncEvent({ t: Date.now(), type: "team_member_remove", team_id: teamId, member_id: memberId, actor_user_id: userId });
-    return reply.send({ ok: true });
   });
 };

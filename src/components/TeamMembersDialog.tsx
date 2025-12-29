@@ -48,6 +48,8 @@ interface TeamMembersDialogProps {
   onRemoveMember: (memberId: string) => void;
   onUpdateRole: (memberId: string, role: 'admin' | 'editor' | 'viewer') => void;
   onCancelInvite: (inviteId: string) => void;
+  isCurrentUserPending?: boolean;
+  onAcceptInvite?: () => void;
 }
 
 const ROLE_CONFIG = {
@@ -66,6 +68,8 @@ export function TeamMembersDialog({
   onRemoveMember,
   onUpdateRole,
   onCancelInvite,
+  isCurrentUserPending,
+  onAcceptInvite,
 }: TeamMembersDialogProps) {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'admin' | 'editor' | 'viewer'>('viewer');
@@ -109,6 +113,18 @@ export function TeamMembersDialog({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          {isCurrentUserPending && (
+            <div className="p-3 rounded-lg border border-warning/30 bg-warning/10 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Clock className="w-4 h-4 text-warning" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">You are invited to join this team</p>
+                  <p className="text-xs text-muted-foreground">Accept to access shared passwords</p>
+                </div>
+              </div>
+              <Button size="sm" onClick={() => onAcceptInvite && onAcceptInvite()}>Accept Invite</Button>
+            </div>
+          )}
           {/* Invite new member */}
           <div className="space-y-3">
             <label className="text-sm font-medium text-foreground">Invite New Member</label>

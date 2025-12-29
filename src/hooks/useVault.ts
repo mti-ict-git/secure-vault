@@ -17,6 +17,7 @@ interface VaultRecord {
   team_id: string | null;
   vault_key_wrapped_for_user: string;
   version: number;
+  permissions?: 'read' | 'write';
 }
 
 type CreateVaultResponse = { id?: string; error?: string };
@@ -180,6 +181,32 @@ export function useVault() {
     [vaults]
   );
 
+  const getVaultKeyByVaultId = useCallback((vaultId: string): Uint8Array | null => {
+    const keys = keysRef.current;
+    if (!keys) return null;
+    const existing = keys.vaultKeys.get(vaultId);
+    if (existing) return existing;
+    const record = getVaultRecordById(vaultId);
+    if (!record) return null;
+    const setKey = (key: Uint8Array) => {
+      keys.vaultKeys.set(vaultId, key);
+    };
+    void openSealed(
+      record.vault_key_wrapped_for_user,
+      keys.privateKeys.enc_pk_b64,
+      keys.privateKeys.enc_sk_b64
+    )
+      .then((key) => setKey(key))
+      .catch(() => {});
+    return null;
+  }, [getVaultRecordById]);
+
+  const getPermissionsForTeamId = useCallback((teamId: string): 'read' | 'write' | null => {
+    const v = vaults.find((rec) => rec.kind === 'team' && rec.team_id === teamId);
+    return v?.permissions ?? null;
+  }, [vaults]);
+
+
   const filterEntriesForVault = useCallback(
     (vault: VaultRecord | null, entries: PasswordEntry[]): PasswordEntry[] => {
       if (!vault) return entries;
@@ -342,10 +369,96 @@ export function useVault() {
   const saveVaultSnapshotForVault = useCallback(async (vaultId: string, entries: PasswordEntry[], folders: Folder[]) => {
     if (!keysRef.current) return;
 
-    const vaultKey = keysRef.current.vaultKeys.get(vaultId);
+    let vaultKey = getVaultKeyByVaultId(vaultId);
     if (!vaultKey) {
-      console.error('No vault key for vault');
-      return;
+      let record = getVaultRecordById(vaultId);
+      if (!record) {
+        const res = await get<{ items: VaultRecord[] }>("/vaults");
+        if (!res.ok || !res.body?.items) {
+          console.error('Snapshot save failed: vaults fetch error', { status: res.status, ok: res.ok });
+          return;
+        }
+        setVaults(res.body.items);
+        record = res.body.items.find((v) => v.id === vaultId) ?? null;
+        if (!record) {
+          console.error('Snapshot save failed: vault record not found', { vaultId });
+          return;
+        }
+      }
+      const keys = keysRef.current;
+      try {
+        const derived = await openSealed(
+          record.vault_key_wrapped_for_user,
+          keys.privateKeys.enc_pk_b64,
+          keys.privateKeys.enc_sk_b64
+        );
+        if (!derived || derived.length === 0) {
+          console.error('Snapshot save failed: derived key empty', {
+            vaultId,
+            wrappedLen: record.vault_key_wrapped_for_user.length,
+          });
+          return;
+        }
+        keys.vaultKeys.set(vaultId, derived);
+        vaultKey = derived;
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const pk = keys.privateKeys.enc_pk_b64;
+        console.error('Snapshot save failed: key derivation error', {
+          vaultId,
+          error: errMsg,
+          userPublicKeyLength: pk.length,
+          wrappedLen: record.vault_key_wrapped_for_user.length,
+          kind: getVaultRecordById(vaultId)?.kind,
+          teamId: getVaultRecordById(vaultId)?.team_id,
+        });
+        if (errMsg.includes('incorrect key pair')) {
+          const rec = getVaultRecordById(vaultId);
+          if (rec?.kind === 'team' && rec.team_id) {
+            try {
+              const accept = await post<{ ok?: boolean }>(`/teams/${rec.team_id}/accept`, {});
+              if (accept.ok && accept.body?.ok) {
+                const refresh = await get<{ items: VaultRecord[] }>("/vaults");
+                if (refresh.ok && refresh.body?.items) {
+                  setVaults(refresh.body.items);
+                  const updated = refresh.body.items.find((v) => v.id === vaultId) ?? null;
+                  if (updated) {
+                    const retried = await openSealed(
+                      updated.vault_key_wrapped_for_user,
+                      keys.privateKeys.enc_pk_b64,
+                      keys.privateKeys.enc_sk_b64
+                    );
+                    if (retried && retried.length > 0) {
+                      keys.vaultKeys.set(vaultId, retried);
+                      vaultKey = retried;
+                    } else {
+                      toast.error('Still cannot access team vault. Ask an owner/admin to re-invite you to refresh encryption keys.');
+                      return;
+                    }
+                  } else {
+                    toast.error('Team vault record missing after accepting invite.');
+                    return;
+                  }
+                } else {
+                  toast.error('Failed to refresh vaults after accepting invite.');
+                  return;
+                }
+              } else {
+                toast.error('Invite acceptance failed or not pending. Ask an owner/admin to re-invite you.');
+                return;
+              }
+            } catch {
+              toast.error('Automatic invite acceptance failed. Ask an owner/admin to re-invite you.');
+              return;
+            }
+          } else {
+            toast.error('Your team access is out of date. Ask an owner/admin to re-invite you, or leave and accept a new invite to refresh your encryption keys.');
+            return;
+          }
+        } else {
+          return;
+        }
+      }
     }
 
     // Create snapshot from current state
@@ -403,7 +516,7 @@ export function useVault() {
       })();
       toast.error(`Failed to save changes (${res.status}${err ? `: ${err}` : ''})`);
     }
-  }, []);
+  }, [getVaultKeyByVaultId, getVaultRecordById]);
 
   const saveAllVaultSnapshots = useCallback(
     async (entries: PasswordEntry[], folders: Folder[]) => {
@@ -779,6 +892,9 @@ export function useVault() {
     getPersonalFolders,
     getTeamFolders,
     getCurrentVaultKey,
+    getVaultIdForTeamId,
+    getVaultKeyByVaultId,
+    getPermissionsForTeamId,
     onKeySetupComplete,
   };
 }

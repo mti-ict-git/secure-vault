@@ -28,6 +28,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -112,6 +113,10 @@ interface VaultDashboardProps {
   onUpdateMemberRole: (teamId: string, memberId: string, role: 'admin' | 'editor' | 'viewer') => void;
   onCancelInvite: (inviteId: string) => void;
   getTeamInvites: (teamId: string) => TeamInvite[];
+  isInvitePending: (teamId: string) => boolean;
+  onAcceptInvite: (teamId: string) => void;
+  // Permissions
+  getPermissionsForTeamId?: (teamId: string) => 'read' | 'write' | null;
   // Import/Export
   onImportEntries: (entries: KdbxImportedEntry[], folders: KdbxImportedFolder[]) => void;
 }
@@ -135,6 +140,9 @@ export function VaultDashboard({
   onUpdateMemberRole,
   onCancelInvite,
   getTeamInvites,
+  isInvitePending,
+  onAcceptInvite,
+  getPermissionsForTeamId,
   onImportEntries,
 }: VaultDashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -384,6 +392,8 @@ export function VaultDashboard({
   };
 
   const currentTeam = selectedTeam ? teams.find(t => t.id === selectedTeam) : null;
+  const currentTeamPermissions = selectedTeam && getPermissionsForTeamId ? getPermissionsForTeamId(selectedTeam) : null;
+  const isTeamReadOnly = selectedTeam ? currentTeamPermissions === 'read' : false;
 
   return (
     <div className="flex h-screen bg-background">
@@ -437,9 +447,9 @@ export function VaultDashboard({
               <Button variant="outline" size="icon">
                 <SortAsc className="w-4 h-4" />
               </Button>
-              <Button onClick={() => setAddDialogOpen(true)}>
+              <Button onClick={() => setAddDialogOpen(true)} disabled={selectedTeam ? isTeamReadOnly : false}>
                 <Plus className="w-4 h-4" />
-                {selectedTeam ? 'Share Password' : 'Add Entry'}
+                {selectedTeam ? (isTeamReadOnly ? 'Read-only' : 'Share Password') : 'Add Entry'}
               </Button>
             </div>
           </div>
@@ -568,9 +578,9 @@ export function VaultDashboard({
                           : 'Add your first password entry to get started'}
                     </p>
                     {!searchQuery && (
-                      <Button onClick={() => setAddDialogOpen(true)}>
+                      <Button onClick={() => setAddDialogOpen(true)} disabled={selectedTeam ? isTeamReadOnly : false}>
                         <Plus className="w-4 h-4" />
-                        {selectedTeam ? 'Share Password' : 'Add Entry'}
+                        {selectedTeam ? (isTeamReadOnly ? 'Read-only' : 'Share Password') : 'Add Entry'}
                       </Button>
                     )}
                   </div>
@@ -637,6 +647,8 @@ export function VaultDashboard({
           onRemoveMember={(memberId) => onRemoveMember(membersTeam.id, memberId)}
           onUpdateRole={(memberId, role) => onUpdateMemberRole(membersTeam.id, memberId, role)}
           onCancelInvite={onCancelInvite}
+          isCurrentUserPending={isInvitePending(membersTeam.id)}
+          onAcceptInvite={() => onAcceptInvite(membersTeam.id)}
         />
       )}
 
@@ -688,6 +700,7 @@ export function VaultDashboard({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Move Selected</DialogTitle>
+            <DialogDescription>Choose a destination folder for the selected items.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-2">

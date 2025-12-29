@@ -24,6 +24,9 @@ const Index = () => {
     addFolder,
     deleteFolder,
     onKeySetupComplete,
+    getVaultIdForTeamId,
+    getVaultKeyByVaultId,
+    getPermissionsForTeamId,
   } = useVault();
 
   const {
@@ -36,7 +39,9 @@ const Index = () => {
     removeMember,
     updateMemberRole,
     getTeamInvites,
-  } = useTeams();
+    isInvitePending,
+    acceptInvite,
+  } = useTeams({ getVaultIdForTeamId, getVaultKeyByVaultId });
 
   // Apply dark mode by default
   useEffect(() => {
@@ -86,6 +91,9 @@ const Index = () => {
       onUpdateMemberRole={updateMemberRole}
       onCancelInvite={cancelInvite}
       getTeamInvites={getTeamInvites}
+      isInvitePending={isInvitePending}
+      onAcceptInvite={acceptInvite}
+      getPermissionsForTeamId={getPermissionsForTeamId}
       onImportEntries={importEntries}
     />
   );

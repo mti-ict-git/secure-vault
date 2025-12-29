@@ -58,6 +58,11 @@ const run = async () => {
   });
   console.log("keys", keys.status, keys.body);
   if (!keys.ok) throw new Error("keys failed");
+  const vaults = await fetchJson("http://localhost:8082/vaults", {
+    headers: { Authorization: `Bearer ${login.token}` },
+  });
+  console.log("vaults", vaults.status, vaults.body);
+  if (!vaults.ok) throw new Error("vaults failed");
   console.log("OK");
 };
 

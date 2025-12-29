@@ -17,7 +17,8 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle,
-  DialogFooter
+  DialogFooter,
+  DialogDescription
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -138,6 +139,9 @@ export function AddEntryDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{editEntry ? 'Edit Entry' : 'Add New Entry'}</DialogTitle>
+          <DialogDescription>
+            Enter the password details. All data is encrypted locally before saving.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">

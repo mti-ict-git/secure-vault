@@ -1,5 +1,21 @@
 # Journal
 
+## 2025-12-29
+- Fix snapshot save to derive and cache missing vault keys when absent.
+- Prevent "No vault key for vault" during team credential save.
+- Ran ESLint and TypeScript no-emit checks; both passed with no errors.
+- Fix TS errors in getVaultKeyByVaultId by removing unsafe casting and
+  reordering helper declarations to avoid TDZ issues.
+- Add on-demand /vaults refresh when key missing to fetch latest records
+  and derive vault key before snapshot encryption.
+- Instrument snapshot save logs with status, record presence, and derivation errors.
+- Add DialogDescription to bulk move dialog to satisfy accessibility requirement.
+- Add DialogDescription to Command dialog to satisfy accessibility requirement.
+- Show toast when key derivation fails due to mismatched public key.
+- Backend: Join latest team_members row in listVaultsForUser to avoid stale wrapped key selection.
+- A11y: Add DialogDescription to add-entry and new-folder dialogs.
+- Fix ReferenceError by importing DialogDescription where used (VaultSidebar, AddEntryDialog).
+
 ## 2025-12-28 09:03:18 +08:00
 - Added `dev:full` script to run frontend and backend together.
 - Updated backend dev script to watch mode for auto-restart.

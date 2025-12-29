@@ -2,6 +2,7 @@ import { useEffect, useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { get, post, request } from '@/lib/api';
 import { Team, TeamMember, TeamInvite } from '@/types/vault';
+import { sealToRecipient } from '@/lib/crypto/box';
 
 type TeamRole = 'owner' | 'admin' | 'editor' | 'viewer';
 
@@ -50,13 +51,6 @@ type OkResponse = { ok?: boolean; error?: string };
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-const randomWrappedKey = () => {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-};
-
 const mapTeam = (item: TeamListItem): Team => ({
   id: item.id,
   name: item.name,
@@ -96,10 +90,18 @@ const mapInvite = (row: TeamMemberRow): TeamInvite | null => {
   };
 };
 
-export function useTeams() {
+type VaultDeps = {
+  getVaultIdForTeamId: (teamId: string) => string | null;
+  getVaultKeyByVaultId: (vaultId: string) => Uint8Array | null;
+};
+
+export function useTeams(deps?: VaultDeps) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [invites, setInvites] = useState<TeamInvite[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [pendingByTeamId, setPendingByTeamId] = useState<Set<string>>(() => new Set());
+  const getVaultIdForTeamId = deps?.getVaultIdForTeamId;
+  const getVaultKeyByVaultId = deps?.getVaultKeyByVaultId;
 
   const refreshTeamMembers = useCallback(async (teamId: string) => {
     const r = await get<ListMembersResponse>(`/teams/${teamId}/members`);
@@ -129,6 +131,11 @@ export function useTeams() {
     const mapped = r.body.items.map(mapTeam);
     setTeams(mapped);
     setInvites([]);
+    const pendingSet = new Set<string>();
+    for (const item of r.body.items) {
+      if (!item.joined_at) pendingSet.add(item.id);
+    }
+    setPendingByTeamId(pendingSet);
     await Promise.all(mapped.map((t) => refreshTeamMembers(t.id)));
   }, [refreshTeamMembers]);
 
@@ -139,10 +146,19 @@ export function useTeams() {
   const createTeam = useCallback(
     (name: string, description?: string) => {
       void (async () => {
+        type KeysMeResponse = { public_enc_key?: string | null };
+        const keysRes = await get<KeysMeResponse>('/keys/me');
+        const encPk = keysRes.body?.public_enc_key;
+        if (!keysRes.ok || !encPk) {
+          toast.error('Cannot create team: encryption keys not registered');
+          return;
+        }
+        const teamKey = crypto.getRandomValues(new Uint8Array(32));
+        const wrappedForCreator = await sealToRecipient(encPk, teamKey);
         const r = await post<CreateTeamResponse>('/teams', {
           name,
           description,
-          team_key_wrapped_for_creator: randomWrappedKey(),
+          team_key_wrapped_for_creator: wrappedForCreator,
         });
         if (!r.ok || !r.body.id) {
           toast.error('Failed to create team');
@@ -194,10 +210,28 @@ export function useTeams() {
           toast.error('User not found');
           return;
         }
+        const userId = lookup.body.id;
+        const pkRes = await get<{ public_enc_key?: string | null }>(`/users/${userId}/public-keys`);
+        const recipientPk = pkRes.body?.public_enc_key;
+        if (!pkRes.ok || !recipientPk) {
+          toast.error('Cannot invite: recipient has no encryption keys');
+          return;
+        }
+        const vaultId = getVaultIdForTeamId ? getVaultIdForTeamId(teamId) : null;
+        if (!vaultId) {
+          toast.error('Team vault not available');
+          return;
+        }
+        const teamKey = getVaultKeyByVaultId ? getVaultKeyByVaultId(vaultId) : null;
+        if (!teamKey) {
+          toast.error('Team key not available');
+          return;
+        }
+        const wrapped = await sealToRecipient(recipientPk, teamKey);
         const r = await post<InviteMemberResponse>(`/teams/${teamId}/invite`, {
-          user_id: lookup.body.id,
+          user_id: userId,
           role,
-          team_key_wrapped: randomWrappedKey(),
+          team_key_wrapped: wrapped,
         });
         if (!r.ok || !r.body.id) {
           toast.error('Failed to send invite');
@@ -206,7 +240,7 @@ export function useTeams() {
         await refreshTeamMembers(teamId);
       })();
     },
-    [refreshTeamMembers]
+    [getVaultIdForTeamId, getVaultKeyByVaultId, refreshTeamMembers]
   );
 
   const cancelInvite = useCallback(
@@ -261,6 +295,36 @@ export function useTeams() {
     return invites.filter(invite => invite.teamId === teamId && invite.status === 'pending');
   }, [invites]);
 
+  const isInvitePending = useCallback((teamId: string) => {
+    return pendingByTeamId.has(teamId);
+  }, [pendingByTeamId]);
+
+  const acceptInvite = useCallback((teamId: string) => {
+    void (async () => {
+      const r = await post<OkResponse>(`/teams/${teamId}/accept`, {});
+      if (!r.ok) {
+        toast.error('Failed to accept invite');
+        return;
+      }
+      toast.success('Joined team');
+      await refreshTeams();
+      await refreshTeamMembers(teamId);
+    })();
+  }, [refreshTeams, refreshTeamMembers]);
+
+  const leaveTeam = useCallback((teamId: string) => {
+    void (async () => {
+      const r = await post<OkResponse>(`/teams/${teamId}/leave`, {});
+      if (!r.ok) {
+        toast.error('Failed to leave team');
+        return;
+      }
+      toast.success('Left team');
+      if (selectedTeam === teamId) setSelectedTeam(null);
+      await refreshTeams();
+    })();
+  }, [refreshTeams, selectedTeam]);
+
   return {
     teams,
     invites,
@@ -274,5 +338,9 @@ export function useTeams() {
     removeMember,
     updateMemberRole,
     getTeamInvites,
+    refreshTeamMembers,
+    isInvitePending,
+    acceptInvite,
+    leaveTeam,
   };
 }

@@ -37,6 +37,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -581,6 +582,7 @@ export function VaultSidebar({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New Folder</DialogTitle>
+            <DialogDescription>Organize entries by creating a folder and optionally selecting a parent.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
