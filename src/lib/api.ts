@@ -39,6 +39,7 @@ export const request = async <T = unknown>(path: string, init: RequestInit = {})
   const body = init.body;
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   const isBlob = typeof Blob !== "undefined" && body instanceof Blob;
+  const hasBody = body !== undefined && body !== null;
   const initHeaders: Record<string, string> = (() => {
     const h = init.headers;
     if (!h) return {};
@@ -49,7 +50,7 @@ export const request = async <T = unknown>(path: string, init: RequestInit = {})
   const baseHeaders: Record<string, string> = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
-  const contentTypeHeaders = isForm || isBlob ? {} : { "Content-Type": "application/json" };
+  const contentTypeHeaders = hasBody && !(isForm || isBlob) ? { "Content-Type": "application/json" } : {};
   const headers = {
     ...contentTypeHeaders,
     ...baseHeaders,
