@@ -160,6 +160,8 @@ export function VaultDashboard({
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
   const [bulkMoveFolderId, setBulkMoveFolderId] = useState<string | null>(null);
+  const [bulkCopyOpen, setBulkCopyOpen] = useState(false);
+  const [bulkCopyTeamId, setBulkCopyTeamId] = useState<string | null>(null);
   
   // Team dialogs
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
@@ -342,6 +344,35 @@ export function VaultDashboard({
     clearSelection();
   };
 
+  const handleBulkCopyToTeam = () => {
+    if (selectedCount === 0) return;
+    const targetTeamId = bulkCopyTeamId;
+    if (!targetTeamId) return;
+    const canWrite = getPermissionsForTeamId ? getPermissionsForTeamId(targetTeamId) === 'write' : true;
+    if (!canWrite) {
+      toast.error('You only have read access to this team');
+      return;
+    }
+    selectedEntries.forEach((e) => {
+      const payload = {
+        title: e.title,
+        username: e.username,
+        password: e.password,
+        url: e.url,
+        notes: e.notes,
+        favorite: e.favorite,
+        folderId: undefined,
+        teamId: targetTeamId,
+        createdBy: 'current-user',
+      };
+      onAddEntry(payload);
+    });
+    toast.success(`Copied ${selectedCount} entr${selectedCount === 1 ? 'y' : 'ies'} to team`);
+    clearSelection();
+    setBulkCopyOpen(false);
+    setBulkCopyTeamId(null);
+  };
+
   const handleSaveEntry = (entryData: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>) => {
     // If we're in a team context, add the teamId
     const finalEntry = selectedTeam 
@@ -509,6 +540,12 @@ export function VaultDashboard({
                         <FolderInput className="w-4 h-4" />
                         Move
                       </Button>
+                      {!selectedTeam && teams.length > 0 && (
+                        <Button variant="outline" size="sm" onClick={() => setBulkCopyOpen(true)}>
+                          <Users className="w-4 h-4" />
+                          Copy to Team
+                        </Button>
+                      )}
                       <Button variant="outline" size="sm" onClick={handleBulkToggleFavorites}>
                         <Star className="w-4 h-4" />
                         Toggle favorite
@@ -726,6 +763,44 @@ export function VaultDashboard({
             <Button variant="outline" onClick={() => setBulkMoveOpen(false)}>Cancel</Button>
             <Button onClick={handleBulkMove}>
               Move {selectedCount}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkCopyOpen} onOpenChange={(open) => {
+        setBulkCopyOpen(open);
+        if (!open) setBulkCopyTeamId(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Copy Selected to Team</DialogTitle>
+            <DialogDescription>Select a team to duplicate the selected passwords into.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Select
+              value={bulkCopyTeamId ?? 'none'}
+              onValueChange={(value) => setBulkCopyTeamId(value === 'none' ? null : value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Choose a team" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Choose a team</SelectItem>
+                {teams.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkCopyOpen(false)}>Cancel</Button>
+            <Button onClick={handleBulkCopyToTeam} disabled={!bulkCopyTeamId}>
+              Copy {selectedCount}
             </Button>
           </DialogFooter>
         </DialogContent>
