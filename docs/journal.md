@@ -198,6 +198,10 @@
 - Show toast error when snapshot save fails (helps diagnose permissions/API issues).
 
 ## 2025-12-29 14:10:23+08:00
+## 2025-12-29 20:49:27 +08:00
+- Removed forced dark mode class from Index to respect next-themes.
+- Added bulk "Copy to Team" action with dialog and permission check.
+- Ran TypeScript no-emit and ESLint; no errors introduced.
 - Fixed 415 unsupported_type for snapshot uploads by relaxing MIME checks for encrypted blob types.
 
 ## 2025-12-29 14:26:47 +08:00

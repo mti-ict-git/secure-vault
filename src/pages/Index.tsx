@@ -43,10 +43,7 @@ const Index = () => {
     acceptInvite,
   } = useTeams({ getVaultIdForTeamId, getVaultKeyByVaultId });
 
-  // Apply dark mode by default
-  useEffect(() => {
-    document.documentElement.classList.add('dark');
-  }, []);
+  
 
   // Show loading while checking if user has keys
   if (isCheckingKeys) {
