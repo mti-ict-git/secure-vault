@@ -150,3 +150,7 @@
 - Added light/dark green favicon SVGs and wired them in index.html.
 - Adjusted primary green tokens for light and dark themes.
 
+## 2025-12-29 10:45:24
+- Generated SecureVault favicon.ico, apple-touch-icon.png, and og.png.
+- Added OG image tags to improve WhatsApp link previews.
+
