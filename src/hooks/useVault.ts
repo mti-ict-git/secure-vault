@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { PasswordEntry, Folder, VaultState } from '@/types/vault';
 import { get, post, getBinary, postForm } from '@/lib/api';
 import { decryptVaultSnapshot, encryptVaultSnapshot, deserializeEncryptedSnapshot, serializeEncryptedSnapshot, type VaultSnapshotV1 } from '@/lib/crypto/vault';
@@ -394,6 +395,13 @@ export function useVault() {
     const res = await postForm<{ id?: string; error?: string }>(`/vaults/${vaultId}/blobs`, form);
     if (!res.ok) {
       console.error('Failed to save vault snapshot:', res.status, res.body);
+      const err = (() => {
+        if (typeof res.body !== 'object' || res.body === null) return undefined;
+        const r = res.body as Record<string, unknown>;
+        const e = r.error;
+        return typeof e === 'string' ? e : undefined;
+      })();
+      toast.error(`Failed to save changes (${res.status}${err ? `: ${err}` : ''})`);
     }
   }, []);
 
@@ -428,9 +436,6 @@ export function useVault() {
     const last = lastImportRef.current;
     if (!last) return;
 
-    let nextEntries: PasswordEntry[] = [];
-    let nextFolders: Folder[] = [];
-
     setState((prev) => {
       const importedEntryIds = new Set(last.entryIds);
       const importedFolderIds = new Set(last.folderIds);
@@ -443,12 +448,9 @@ export function useVault() {
 
       const folders = prev.folders.filter((f) => !importedFolderIds.has(f.id));
       const next = { ...prev, entries, folders };
-      nextEntries = next.entries;
-      nextFolders = next.folders;
+      void saveAllVaultSnapshots(next.entries, next.folders);
       return next;
     });
-
-    void saveAllVaultSnapshots(nextEntries, nextFolders);
 
     setCanUndoLastImport(false);
     lastImportRef.current = null;
@@ -463,21 +465,15 @@ export function useVault() {
       const personalVaultId = getPersonalVaultId();
       if (!personalVaultId) return;
 
-      let nextEntries: PasswordEntry[] = [];
-      let nextFolders: Folder[] = [];
-
       const id = crypto.randomUUID();
       setState((prev) => {
         const next = {
           ...prev,
           folders: [...prev.folders, { id, name: trimmed, parentId }],
         };
-        nextEntries = next.entries;
-        nextFolders = next.folders;
+        void saveVaultSnapshotForSingleVault(personalVaultId, next.entries, next.folders);
         return next;
       });
-
-      void saveVaultSnapshotForSingleVault(personalVaultId, nextEntries, nextFolders);
       resetInactivityTimer();
     },
     [getPersonalVaultId, resetInactivityTimer, saveVaultSnapshotForSingleVault]
@@ -487,9 +483,6 @@ export function useVault() {
     async (folderId: string) => {
       const personalVaultId = getPersonalVaultId();
       if (!personalVaultId) return;
-
-      let nextEntries: PasswordEntry[] = [];
-      let nextFolders: Folder[] = [];
 
       setState((prev) => {
         const childrenByParent = new Map<string, string[]>();
@@ -517,12 +510,9 @@ export function useVault() {
         );
 
         const next = { ...prev, entries, folders };
-        nextEntries = next.entries;
-        nextFolders = next.folders;
+        void saveVaultSnapshotForSingleVault(personalVaultId, next.entries, next.folders);
         return next;
       });
-
-      void saveVaultSnapshotForSingleVault(personalVaultId, nextEntries, nextFolders);
       resetInactivityTimer();
     },
     [getPersonalVaultId, resetInactivityTimer, saveVaultSnapshotForSingleVault]
@@ -589,31 +579,21 @@ export function useVault() {
 
     const targetVaultId = newEntry.teamId ? getVaultIdForTeamId(newEntry.teamId) : getPersonalVaultId();
     if (!targetVaultId) return;
-
-    let nextEntries: PasswordEntry[] = [];
-    let nextFolders: Folder[] = [];
     
     setState(prev => {
       const newState = {
         ...prev,
         entries: [...prev.entries, newEntry],
       };
-      nextEntries = newState.entries;
-      nextFolders = newState.folders;
+      void saveVaultSnapshotForSingleVault(targetVaultId, newState.entries, newState.folders);
       return newState;
     });
-
-    await saveVaultSnapshotForSingleVault(targetVaultId, nextEntries, nextFolders);
     resetInactivityTimer();
   }, [getPersonalVaultId, getVaultIdForTeamId, resetInactivityTimer, saveVaultSnapshotForSingleVault]);
 
   const updateEntry = useCallback(async (id: string, updates: Partial<PasswordEntry>) => {
     const personalVaultId = getPersonalVaultId();
     if (!personalVaultId) return;
-
-    let saveVaultIds: string[] = [];
-    let nextEntries: PasswordEntry[] = [];
-    let nextFolders: Folder[] = [];
 
     setState(prev => {
       const existing = prev.entries.find((e) => e.id === id);
@@ -624,16 +604,15 @@ export function useVault() {
       const oldVaultId = existing.teamId ? getVaultIdForTeamId(existing.teamId) : personalVaultId;
       const newVaultId = updated.teamId ? getVaultIdForTeamId(updated.teamId) : personalVaultId;
       const ids = [oldVaultId, newVaultId].filter((v): v is string => typeof v === 'string');
-      saveVaultIds = Array.from(new Set(ids));
+      const saveVaultIds = Array.from(new Set(ids));
 
       const newEntries = prev.entries.map((entry) => (entry.id === id ? updated : entry));
       const newState = { ...prev, entries: newEntries };
-      nextEntries = newState.entries;
-      nextFolders = newState.folders;
+      void Promise.all(
+        saveVaultIds.map((vaultId) => saveVaultSnapshotForSingleVault(vaultId, newState.entries, newState.folders))
+      );
       return newState;
     });
-
-    await Promise.all(saveVaultIds.map((vaultId) => saveVaultSnapshotForSingleVault(vaultId, nextEntries, nextFolders)));
     resetInactivityTimer();
   }, [getPersonalVaultId, getVaultIdForTeamId, resetInactivityTimer, saveVaultSnapshotForSingleVault]);
 
@@ -641,26 +620,19 @@ export function useVault() {
     const personalVaultId = getPersonalVaultId();
     if (!personalVaultId) return;
 
-    let saveVaultId: string | null = null;
-    let nextEntries: PasswordEntry[] = [];
-    let nextFolders: Folder[] = [];
-
     setState(prev => {
       const existing = prev.entries.find((e) => e.id === id);
       if (!existing) return prev;
 
-      saveVaultId = existing.teamId ? getVaultIdForTeamId(existing.teamId) : personalVaultId;
+      const saveVaultId = existing.teamId ? getVaultIdForTeamId(existing.teamId) : personalVaultId;
 
       const newEntries = prev.entries.filter(entry => entry.id !== id);
       const newState = { ...prev, entries: newEntries };
-      nextEntries = newState.entries;
-      nextFolders = newState.folders;
+      if (saveVaultId) {
+        void saveVaultSnapshotForSingleVault(saveVaultId, newState.entries, newState.folders);
+      }
       return newState;
     });
-
-    if (saveVaultId) {
-      await saveVaultSnapshotForSingleVault(saveVaultId, nextEntries, nextFolders);
-    }
     resetInactivityTimer();
   }, [getPersonalVaultId, getVaultIdForTeamId, resetInactivityTimer, saveVaultSnapshotForSingleVault]);
 
@@ -668,26 +640,19 @@ export function useVault() {
     const personalVaultId = getPersonalVaultId();
     if (!personalVaultId) return;
 
-    let saveVaultId: string | null = null;
-    let nextEntries: PasswordEntry[] = [];
-    let nextFolders: Folder[] = [];
-
     setState(prev => {
       const existing = prev.entries.find((e) => e.id === id);
       if (!existing) return prev;
 
-      saveVaultId = existing.teamId ? getVaultIdForTeamId(existing.teamId) : personalVaultId;
+      const saveVaultId = existing.teamId ? getVaultIdForTeamId(existing.teamId) : personalVaultId;
       const updated: PasswordEntry = { ...existing, favorite: !existing.favorite, updatedAt: new Date() };
       const newEntries = prev.entries.map((entry) => (entry.id === id ? updated : entry));
       const newState = { ...prev, entries: newEntries };
-      nextEntries = newState.entries;
-      nextFolders = newState.folders;
+      if (saveVaultId) {
+        void saveVaultSnapshotForSingleVault(saveVaultId, newState.entries, newState.folders);
+      }
       return newState;
     });
-
-    if (saveVaultId) {
-      await saveVaultSnapshotForSingleVault(saveVaultId, nextEntries, nextFolders);
-    }
     resetInactivityTimer();
   }, [getPersonalVaultId, getVaultIdForTeamId, resetInactivityTimer, saveVaultSnapshotForSingleVault]);
 
@@ -733,21 +698,15 @@ export function useVault() {
     lastImportRef.current = { entryIds: importedEntryIds, folderIds: importedFolderIds };
     setCanUndoLastImport(true);
 
-    let nextEntries: PasswordEntry[] = [];
-    let nextFolders: Folder[] = [];
-
     setState(prev => {
       const newState = {
         ...prev,
         entries: [...prev.entries, ...entriesWithIds],
         folders: [...prev.folders, ...foldersWithIds],
       };
-      nextEntries = newState.entries;
-      nextFolders = newState.folders;
+      void saveAllVaultSnapshots(newState.entries, newState.folders);
       return newState;
     });
-
-    await saveAllVaultSnapshots(nextEntries, nextFolders);
     resetInactivityTimer();
   }, [resetInactivityTimer, saveAllVaultSnapshots]);
 

@@ -162,3 +162,7 @@
 - Deduplicated vault snapshot load to prefer team vault data over personal fallback.
 - Ensured imported entries set undo metadata and snapshots save across all vaults.
 
+## 2025-12-29 13:57:56+08:00
+- Fixed snapshot save race caused by relying on side effects from React state updaters.
+- Show toast error when snapshot save fails (helps diagnose permissions/API issues).
+
