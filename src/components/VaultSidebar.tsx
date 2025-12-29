@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -260,17 +261,20 @@ export function VaultSidebar({
     <aside className="w-64 flex-shrink-0 border-r border-border bg-card/50 flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Shield className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="font-bold text-foreground">SecureVault</h1>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-vault-unlocked animate-pulse" />
-              <span className="text-xs text-muted-foreground">Unlocked</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Shield className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="font-bold text-foreground">SecureVault</h1>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-vault-unlocked animate-pulse" />
+                <span className="text-xs text-muted-foreground">Unlocked</span>
+              </div>
             </div>
           </div>
+          <ThemeToggle />
         </div>
       </div>
 
