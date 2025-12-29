@@ -154,3 +154,11 @@
 - Generated SecureVault favicon.ico, apple-touch-icon.png, and og.png.
 - Added OG image tags to improve WhatsApp link previews.
 
+## 2025-12-29 13:33:48
+- Updated Favorites view to include both personal and team entries.
+
+## 2025-12-29 13:50:29+08:00
+- Fixed vault snapshot persistence so entry updates save to the correct personal/team vault.
+- Deduplicated vault snapshot load to prefer team vault data over personal fallback.
+- Ensured imported entries set undo metadata and snapshots save across all vaults.
+

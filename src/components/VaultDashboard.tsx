@@ -205,19 +205,15 @@ export function VaultDashboard({
   const filteredEntries = useMemo(() => {
     let filtered: PasswordEntry[];
 
-    // Filter by team or personal
-    if (selectedTeam) {
-      filtered = entries.filter(e => e.teamId === selectedTeam);
+    if (showFavorites) {
+      filtered = entries.filter((e) => e.favorite);
+    } else if (selectedTeam) {
+      filtered = entries.filter((e) => e.teamId === selectedTeam);
     } else {
       filtered = personalEntries;
-      
-      // Filter by favorites
-      if (showFavorites) {
-        filtered = filtered.filter(e => e.favorite);
-      }
-      // Filter by folder
-      else if (selectedFolder) {
-        filtered = filtered.filter(e => e.folderId === selectedFolder);
+
+      if (selectedFolder) {
+        filtered = filtered.filter((e) => e.folderId === selectedFolder);
       }
     }
 
@@ -239,7 +235,7 @@ export function VaultDashboard({
     });
   }, [entries, personalEntries, selectedFolder, selectedTeam, showFavorites, searchQuery]);
 
-  const favoriteCount = personalEntries.filter(e => e.favorite).length;
+  const favoriteCount = entries.filter((e) => e.favorite).length;
 
   const selectedEntries = useMemo(
     () => filteredEntries.filter((e) => selectedEntryIds.has(e.id)),
@@ -375,11 +371,11 @@ export function VaultDashboard({
 
   const getCurrentTitle = () => {
     if (showSecurity) return 'Security Dashboard';
+    if (showFavorites) return 'Favorites';
     if (selectedTeam) {
       const team = teams.find(t => t.id === selectedTeam);
       return team?.name || 'Team';
     }
-    if (showFavorites) return 'Favorites';
     if (selectedFolder) {
       const folder = personalFolders.find(f => f.id === selectedFolder);
       return folder?.name || 'My Vault';
