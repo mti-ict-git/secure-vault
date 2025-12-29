@@ -166,3 +166,9 @@
 - Fixed snapshot save race caused by relying on side effects from React state updaters.
 - Show toast error when snapshot save fails (helps diagnose permissions/API issues).
 
+## 2025-12-29 14:10:23+08:00
+- Fixed 415 unsupported_type for snapshot uploads by relaxing MIME checks for encrypted blob types.
+
+## 2025-12-29 14:26:47 +08:00
+- Fixed blob upload 404 by correcting the POST /vaults/:id/blobs route path.
+

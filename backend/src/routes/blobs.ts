@@ -49,14 +49,27 @@ export const blobRoutes = async (app: FastifyInstance) => {
       }
     }
     if (!filePart) return reply.status(400).send({ error: "no_file" });
+
+    const effectiveBlobType = meta.blob_type || "snapshot";
     if (
       config.uploads.allowed.length &&
       !config.uploads.allowed.includes("*") &&
       !config.uploads.allowed.includes("*/*")
     ) {
-      const mt = (filePart.mimetype || "").toLowerCase();
-      if (!config.uploads.allowed.includes(mt)) {
-        return reply.status(415).send({ error: "unsupported_type" });
+      const skipMimeCheck =
+        effectiveBlobType === "snapshot" ||
+        effectiveBlobType === "delta" ||
+        effectiveBlobType === "kdbx" ||
+        effectiveBlobType === "attachment";
+
+      if (!skipMimeCheck) {
+        const mt = (filePart.mimetype || "")
+          .split(";")[0]
+          ?.trim()
+          .toLowerCase();
+        if (!config.uploads.allowed.includes(mt)) {
+          return reply.status(415).send({ error: "unsupported_type" });
+        }
       }
     }
     const blobId = uid();
@@ -66,14 +79,14 @@ export const blobRoutes = async (app: FastifyInstance) => {
     const id = await insertBlob(
       blobId,
       vaultId,
-      meta.blob_type || "snapshot",
+      effectiveBlobType,
       meta.content_sha256 || "",
       storageKind,
       dest,
       meta.size_bytes || 0,
       userId
     );
-    await writeAudit(userId, "blob_upload", "vault", vaultId, { blob_id: id, blob_type: meta.blob_type || "snapshot" });
+    await writeAudit(userId, "blob_upload", "vault", vaultId, { blob_id: id, blob_type: effectiveBlobType });
     publishSyncEvent({ t: Date.now(), type: "blob_upload", vault_id: vaultId, actor_user_id: userId });
     return reply.status(201).send({ id });
   });
