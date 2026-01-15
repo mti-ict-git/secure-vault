@@ -28,10 +28,17 @@ createWriteStream(join(process.cwd(), logFile), { flags: "a" });
 export const config = {
   port: toNumber(process.env.BACKEND_PORT || process.env.PORT, 8082),
   nodeEnv: process.env.NODE_ENV || "development",
-  corsOrigins: (process.env.CORS_ORIGIN || "http://localhost:5173,http://localhost:8080,localhost")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean),
+  corsOrigins: Array.from(
+    new Set([
+      ...(process.env.CORS_ORIGIN || "http://localhost:5173,http://localhost:8080,localhost")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      ...(((process.env.NODE_ENV || "development") !== "production")
+        ? ["http://localhost:8080", "http://localhost:5173", "localhost"]
+        : []),
+    ])
+  ),
   rateLimit: {
     windowMs: toNumber(process.env.RATE_LIMIT_WINDOW_MS, 900000),
     max: toNumber(process.env.RATE_LIMIT_MAX_REQUESTS, 100),

@@ -225,6 +225,7 @@ export function VaultSidebar({
     onSelectFolder(null);
     if (showFavorites) onToggleFavorites();
     if (showSecurity) onToggleSecurity();
+    if (showAdminAudit && onToggleAdminAudit) onToggleAdminAudit();
   };
 
   const openCreateFolder = () => {
@@ -309,6 +310,7 @@ export function VaultSidebar({
             onSelectFolder(null);
             if (showSecurity) onToggleSecurity();
             if (!showFavorites) onToggleFavorites();
+            if (showAdminAudit && onToggleAdminAudit) onToggleAdminAudit();
           }}
           className={cn(
             'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
@@ -329,6 +331,7 @@ export function VaultSidebar({
             onSelectFolder(null);
             if (showFavorites) onToggleFavorites();
             if (!showSecurity) onToggleSecurity();
+            if (showAdminAudit && onToggleAdminAudit) onToggleAdminAudit();
           }}
           className={cn(
             'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
@@ -386,6 +389,7 @@ export function VaultSidebar({
                             onSelectTeam(null);
                             onSelectFolder(node.id);
                             if (showFavorites) onToggleFavorites();
+                            if (showAdminAudit && onToggleAdminAudit) onToggleAdminAudit();
                           }}
                           onKeyDown={(e) => {
                             if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -393,6 +397,7 @@ export function VaultSidebar({
                             onSelectTeam(null);
                             onSelectFolder(node.id);
                             if (showFavorites) onToggleFavorites();
+                            if (showAdminAudit && onToggleAdminAudit) onToggleAdminAudit();
                           }}
                           className={cn(
                             'w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
@@ -495,6 +500,7 @@ export function VaultSidebar({
                         onSelectTeam(team.id);
                         onSelectFolder(null);
                         if (showFavorites) onToggleFavorites();
+                        if (showAdminAudit && onToggleAdminAudit) onToggleAdminAudit();
                       }}
                       className={cn(
                         'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',

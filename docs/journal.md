@@ -298,6 +298,14 @@
 - DN: OK, UPN: OK, MBMA\\username: OK, sAMAccountName: 52e invalid credentials.
 - Updated backend to try typed DOMAIN\\username first when provided.
 ## 2026-01-15 22:15:47 +0700
+## 2026-01-15 22:52:05 +0700
+- Adjusted backend CORS allowlist to always include localhost dev origins.
+- Ensured SSE from http://localhost:8080 to http://localhost:8084 is allowed.
+- Ran npm run lint and npx tsc --noEmit; both completed successfully.
+## 2026-01-15 23:06:44 +0700
+- Fixed Audit & Compliance panel sticking by closing it on navigation.
+- Updated sidebar handlers to close audit view when selecting other menus.
+- Validated with npm run lint and npx tsc --noEmit.
 - Added admin role setup script and granted admin to provided DN.
 - Verified login via UPN and /me shows role: admin.
 - Admin link visible in sidebar; /admin route protected by server.
