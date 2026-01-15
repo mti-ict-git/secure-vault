@@ -55,6 +55,22 @@
 - Aligned frontend team roles with backend roles (owner/admin/editor/viewer).
 - Kept Manage Members dialog synced to latest teams state.
 
+## 2026-01-15 08:20:49 +0700
+- Added Refresh button in VaultDashboard to re-fetch shared data without reload.
+- Implemented refresh in useVault to decrypt latest vault snapshots using current keys.
+- Wired refresh from Index page; validated with npx tsc and npm run lint.
+
+## 2026-01-15 08:50:11 +0700
+- Added global user role column via migration and backend role checks.
+- Implemented admin-only GET /admin/audit with server-side filters.
+- Enriched audit list with actor display names.
+- Included user.role in GET /me; updated frontend auth types and routing.
+- Added Administration page with Shadcn UI, filters, and audit display.
+- Added Administration link in sidebar for admin users.
+- Normalized ActivityView to accept backend items and underscore actions.
+- Logged events: LDAP login success/failure, unlock success/failure, password/username copy.
+- Ran eslint and TypeScript no-emit checks; both completed successfully.
+
 ## 2025-12-28 18:58:05 +08:00
 - Fixed TypeScript TS5076 by adding parentheses around mixed nullish/OR fallback.
 
@@ -193,6 +209,24 @@
 - Deduplicated vault snapshot load to prefer team vault data over personal fallback.
 - Ensured imported entries set undo metadata and snapshots save across all vaults.
 
+## 2026-01-15 08:57:38 +0700
+- Created docs/offline_implementation.md outlining offline mode plan.
+- Scope: personal editable offline; team view-only; blocked team actions.
+- Added UX flow, components, storage model, endpoints, accessibility, compliance.
+
+## 2026-01-15 08:59:22 +0700
+- Added phase-by-phase checkpoints to offline implementation plan.
+- Defined deliverables and acceptance checks per phase (1–6).
+- Implemented SSE live updates: fixed client event types to match backend.
+- Exposed refreshTeams from useTeams; wired SSE in Index to refresh vaults/teams.
+- Validated with npm run lint and npx tsc --noEmit.
+- Implemented Share Vault flow in UI.
+- Updated ShareVaultDialog to use email lookup (/users/lookup) and fetch recipient public keys (/users/:id/public-keys).
+- Implemented team sharing by wrapping vault key to joined team members individually for compatibility with current vault listing logic.
+- Added Share button to VaultDashboard header and wired dialog with current vault id/key.
+- Passed vault key helpers from Index to VaultDashboard.
+- Ran npm run lint and npx tsc --noEmit; both succeeded.
+
 ## 2025-12-29 13:57:56+08:00
 - Fixed snapshot save race caused by relying on side effects from React state updaters.
 - Show toast error when snapshot save fails (helps diagnose permissions/API issues).
@@ -206,4 +240,18 @@
 
 ## 2025-12-29 14:26:47 +08:00
 - Fixed blob upload 404 by correcting the POST /vaults/:id/blobs route path.
-
+## Thu Jan 15 08:05:37 WIB 2026
+- Scanned repository structure and mapped frontend/backend directories.
+- Identified stack: Vite+React (Shadcn UI, Tailwind) and Fastify backend.
+- Cataloged config: JWT guard, CORS, rate limit, MSSQL, LDAP, uploads.
+- Reviewed Docker/Nginx routing (/api → backend:8084) and compose setup.
+- Installed dependencies; ran ESLint and TypeScript no-emit successfully.
+- Documented env categories (DB, LDAP, API base, uploads) without secrets.
+## Thu Jan 15 08:14:13 WIB 2026
+- Suppress external favicon fetch for internal/private hosts to avoid 404 noise.
+- Added image onError fallback to show initial avatar when favicon missing.
+- Ran ESLint and TypeScript no-emit; no errors introduced.
+## Thu Jan 15 08:16:48 WIB 2026
+- Added global setting VITE_DISABLE_EXTERNAL_FAVICONS to disable external favicon requests.
+- Implemented per-domain favicon failure caching to prevent repeated fetches.
+- Ran ESLint and TypeScript no-emit; both succeeded.

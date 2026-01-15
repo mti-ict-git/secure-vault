@@ -21,8 +21,6 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
 import { post, get } from '@/lib/api';
 import { sealToRecipient } from '@/lib/crypto/box';
-import { bytesToBase64, base64ToBytes } from '@/lib/crypto/encoding';
-import { Team } from '@/types/vault';
 
 interface ShareVaultDialogProps {
   open: boolean;
@@ -34,11 +32,13 @@ interface ShareVaultDialogProps {
 type ShareTarget = 'user' | 'team';
 type Permission = 'read' | 'write';
 
-interface UserSearchResult {
+type LookupUser = {
   id: string;
-  username: string;
-  public_enc_key: string;
-}
+  display_name?: string;
+  email?: string;
+};
+
+type TeamOption = { id: string; name: string };
 
 export function ShareVaultDialog({
   open,
@@ -50,47 +50,45 @@ export function ShareVaultDialog({
   const [targetType, setTargetType] = useState<ShareTarget>('user');
   const [permission, setPermission] = useState<Permission>('read');
   const [userSearch, setUserSearch] = useState('');
-  const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(null);
+  const [selectedUser, setSelectedUser] = useState<LookupUser | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
+  const [isLookingUp, setIsLookingUp] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
-  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
+  const [searchResults, setSearchResults] = useState<LookupUser[]>([]);
 
   // Fetch teams on mount
   useEffect(() => {
     if (open) {
-      get<{ teams: Team[] }>('/teams').then((res) => {
-        if (res.ok && res.body?.teams) {
-          setTeams(res.body.teams);
+      void (async () => {
+        type TeamListItem = {
+          id: string;
+          name: string;
+        };
+        const r = await get<{ items: TeamListItem[] }>('/teams');
+        if (r.ok && r.body?.items) {
+          setTeams(r.body.items.map((t) => ({ id: t.id, name: t.name })));
         }
-      });
+      })();
     }
   }, [open]);
 
-  // Search users
-  useEffect(() => {
-    if (targetType !== 'user' || userSearch.length < 2) {
-      setSearchResults([]);
-      return;
-    }
-
-    const timeoutId = setTimeout(async () => {
-      setIsSearching(true);
-      try {
-        const res = await get<{ users: UserSearchResult[] }>(
-          `/users/search?q=${encodeURIComponent(userSearch)}`
-        );
-        if (res.ok && res.body?.users) {
-          setSearchResults(res.body.users);
-        }
-      } finally {
-        setIsSearching(false);
+  const lookupUser = async () => {
+    if (!userSearch) return;
+    setIsLookingUp(true);
+    try {
+      const res = await get<LookupUser>(`/users/lookup?email=${encodeURIComponent(userSearch)}`);
+      if (res.ok && res.body?.id) {
+        setSelectedUser(res.body);
+        setSearchResults([]);
+        return true;
       }
-    }, 300);
-
-    return () => clearTimeout(timeoutId);
-  }, [userSearch, targetType]);
+      toast({ title: 'User not found', description: 'No user with that email.' , variant: 'destructive' });
+      return false;
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
 
   const handleShare = async () => {
     if (!vaultKey) {
@@ -105,28 +103,31 @@ export function ShareVaultDialog({
     setIsSharing(true);
 
     try {
-      let wrappedKey: string;
-      let sharePayload: Record<string, unknown>;
-
       if (targetType === 'user') {
-        if (!selectedUser) {
-          toast({
-            title: 'No user selected',
-            description: 'Please select a user to share with.',
-            variant: 'destructive',
-          });
+        let user = selectedUser;
+        if (!user) {
+          const ok = await lookupUser();
+          if (!ok) return;
+          user = selectedUser;
+          if (!user) return;
+        }
+        const pkRes = await get<{ public_enc_key?: string | null }>(`/users/${user.id}/public-keys`);
+        const recipientPk = pkRes.body?.public_enc_key || null;
+        if (!pkRes.ok || !recipientPk) {
+          toast({ title: 'Cannot share', description: 'Recipient has no encryption keys.', variant: 'destructive' });
           return;
         }
-
-        // Wrap vault key to user's public encryption key
-        wrappedKey = await sealToRecipient(selectedUser.public_enc_key, vaultKey);
-
-        sharePayload = {
+        const wrappedKey = await sealToRecipient(recipientPk, vaultKey);
+        const sharePayload = {
           source_vault_id: vaultId,
-          target_user_id: selectedUser.id,
+          target_user_id: user.id,
           wrapped_key: wrappedKey,
           permissions: permission,
         };
+        const res = await post('/shares', sharePayload);
+        if (!res.ok) {
+          throw new Error('Failed to create share');
+        }
       } else {
         if (!selectedTeamId) {
           toast({
@@ -136,37 +137,39 @@ export function ShareVaultDialog({
           });
           return;
         }
-
-        // For team sharing, we need the team's public key
-        const teamRes = await get<{ team: { public_enc_key: string } }>(
-          `/teams/${selectedTeamId}`
-        );
-        
-        if (!teamRes.ok || !teamRes.body?.team?.public_enc_key) {
-          throw new Error('Could not get team public key');
+        const membersRes = await get<{ items: Array<{ id: string; user_id: string; joined_at: string | null }> }>(`/teams/${selectedTeamId}/members`);
+        if (!membersRes.ok || !membersRes.body?.items) {
+          throw new Error('Failed to load team members');
         }
-
-        wrappedKey = await sealToRecipient(teamRes.body.team.public_enc_key, vaultKey);
-
-        sharePayload = {
-          source_vault_id: vaultId,
-          target_team_id: selectedTeamId,
-          wrapped_key: wrappedKey,
-          permissions: permission,
-        };
-      }
-
-      const res = await post('/shares', sharePayload);
-
-      if (!res.ok) {
-        throw new Error('Failed to create share');
+        const joined = membersRes.body.items.filter((m) => m.joined_at);
+        if (joined.length === 0) {
+          toast({ title: 'No active members', description: 'Team has no joined members.', variant: 'destructive' });
+          return;
+        }
+        const tasks = joined.map(async (m) => {
+          const pkRes = await get<{ public_enc_key?: string | null }>(`/users/${m.user_id}/public-keys`);
+          const recipientPk = pkRes.body?.public_enc_key || null;
+          if (!pkRes.ok || !recipientPk) return false;
+          const wrappedKey = await sealToRecipient(recipientPk, vaultKey);
+          const sharePayload = {
+            source_vault_id: vaultId,
+            target_user_id: m.user_id,
+            wrapped_key: wrappedKey,
+            permissions: permission,
+          };
+          const r = await post('/shares', sharePayload);
+          return r.ok;
+        });
+        const results = await Promise.all(tasks);
+        const okCount = results.filter(Boolean).length;
+        if (okCount === 0) {
+          throw new Error('Failed to share with team members');
+        }
       }
 
       toast({
         title: 'Vault shared',
-        description: `Vault has been shared with ${
-          targetType === 'user' ? selectedUser?.username : 'the team'
-        }.`,
+        description: targetType === 'user' ? 'Vault has been shared with the user.' : 'Vault has been shared with team members.',
       });
 
       onOpenChange(false);
@@ -231,41 +234,30 @@ export function ShareVaultDialog({
             </RadioGroup>
           </div>
 
-          {/* User search */}
+          {/* User lookup */}
           {targetType === 'user' && (
             <div className="space-y-2">
-              <Label>Search user</Label>
+              <Label>User Email</Label>
               <Input
-                placeholder="Type username to search..."
+                placeholder="user@example.com"
                 value={userSearch}
                 onChange={(e) => setUserSearch(e.target.value)}
               />
-              {isSearching && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Searching...
-                </div>
-              )}
-              {searchResults.length > 0 && (
-                <div className="border rounded-md divide-y max-h-40 overflow-y-auto">
-                  {searchResults.map((user) => (
-                    <button
-                      key={user.id}
-                      onClick={() => {
-                        setSelectedUser(user);
-                        setUserSearch(user.username);
-                        setSearchResults([]);
-                      }}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-accent transition-colors"
-                    >
-                      {user.username}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => void lookupUser()} disabled={isLookingUp || !userSearch.trim()}>
+                  {isLookingUp ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Lookup
+                    </>
+                  ) : (
+                    'Lookup'
+                  )}
+                </Button>
+              </div>
               {selectedUser && (
                 <p className="text-sm text-muted-foreground">
-                  Selected: <span className="font-medium">{selectedUser.username}</span>
+                  Selected: <span className="font-medium">{selectedUser.email || selectedUser.display_name || selectedUser.id}</span>
                 </p>
               )}
             </div>
@@ -317,7 +309,7 @@ export function ShareVaultDialog({
               onClick={handleShare}
               disabled={
                 isSharing ||
-                (targetType === 'user' && !selectedUser) ||
+                (targetType === 'user' && !selectedUser && !userSearch.trim()) ||
                 (targetType === 'team' && !selectedTeamId)
               }
               className="flex-1"

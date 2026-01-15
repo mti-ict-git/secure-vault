@@ -339,6 +339,7 @@ export function useTeams(deps?: VaultDeps) {
     updateMemberRole,
     getTeamInvites,
     refreshTeamMembers,
+    refreshTeams,
     isInvitePending,
     acceptInvite,
     leaveTeam,

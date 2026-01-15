@@ -21,7 +21,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { PasswordEntry as PasswordEntryType } from '@/types/vault';
 import { copyToClipboard, maskPassword, formatDate } from '@/lib/password-utils';
+import { post } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { getFaviconUrlForDomain, registerFaviconFailure } from '@/lib/favicon';
 import { toast } from 'sonner';
 
 interface PasswordEntryProps {
@@ -36,11 +38,13 @@ interface PasswordEntryProps {
 export function PasswordEntryCard({ entry, selected, onSelectedChange, onToggleFavorite, onEdit, onDelete }: PasswordEntryProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [copied, setCopied] = useState<'password' | 'username' | null>(null);
+  const [showFavicon, setShowFavicon] = useState(true);
 
   const handleCopy = async (text: string, type: 'password' | 'username') => {
     const autoClearMs = type === 'password' ? 30000 : 0;
     await copyToClipboard(text, autoClearMs);
     setCopied(type);
+    void post('/audit/log', { action: type === 'password' ? 'password_copy' : 'username_copy', resource_type: 'entry', resource_id: entry.id });
     
     toast.success(
       type === 'password' 
@@ -55,7 +59,7 @@ export function PasswordEntryCard({ entry, selected, onSelectedChange, onToggleF
     if (!url) return null;
     try {
       const domain = new URL(url).hostname;
-      return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+      return getFaviconUrlForDomain(domain);
     } catch {
       return null;
     }
@@ -76,8 +80,22 @@ export function PasswordEntryCard({ entry, selected, onSelectedChange, onToggleF
 
         {/* Icon */}
         <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
-          {favicon ? (
-            <img src={favicon} alt="" className="w-5 h-5" />
+          {favicon && showFavicon ? (
+            <img
+              src={favicon}
+              alt=""
+              className="w-5 h-5"
+              onError={() => {
+                let d = '';
+                try {
+                  d = entry.url ? new URL(entry.url).hostname : '';
+                } catch {
+                  d = '';
+                }
+                if (d) registerFaviconFailure(d);
+                setShowFavicon(false);
+              }}
+            />
           ) : (
             <span className="text-lg font-semibold text-muted-foreground">
               {entry.title.charAt(0).toUpperCase()}

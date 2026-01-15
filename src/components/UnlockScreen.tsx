@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
+import { post } from '@/lib/api';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +41,9 @@ export function UnlockScreen({ onUnlock, onResetKeys }: UnlockScreenProps) {
       if (!success) {
         setError('Invalid master passphrase. This is not your LDAP password.');
         setPassword('');
+        void post('/audit/log', { action: 'vault_unlock_failed', resource_type: 'vault', details: {} });
+      } else {
+        void post('/audit/log', { action: 'vault_unlock', resource_type: 'vault', details: {} });
       }
     } catch (err) {
       console.error('Unlock error:', err);

@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-export type AuthUser = { id: string; display_name?: string; theme_preference?: "light" | "dark" | "system" } | null;
+export type AuthUser = { id: string; display_name?: string; theme_preference?: "light" | "dark" | "system"; role?: "user" | "admin" } | null;
 
 export type AuthLoginResult = { ok: boolean; error?: string };
 
@@ -21,4 +21,3 @@ export const AuthContext = createContext<AuthContextValue>({
 });
 
 export const useAuth = () => useContext(AuthContext);
-

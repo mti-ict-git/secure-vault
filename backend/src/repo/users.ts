@@ -72,8 +72,18 @@ export const getUserById = async (userId: string) => {
   const r = await pool
     .request()
     .input("id", userId)
-    .query("SELECT id, display_name, email, theme_preference FROM dbo.users WHERE id=@id");
+    .query("SELECT id, display_name, email, theme_preference, role FROM dbo.users WHERE id=@id");
   return r.recordset[0] || null;
+};
+
+export const isAdminUser = async (userId: string): Promise<boolean> => {
+  const pool = await getPool();
+  const r = await pool
+    .request()
+    .input("id", userId)
+    .query("SELECT TOP 1 role FROM dbo.users WHERE id=@id");
+  const row = r.recordset[0] as { role?: string } | undefined;
+  return row?.role === "admin";
 };
 
 export const getUserByEmail = async (email: string) => {

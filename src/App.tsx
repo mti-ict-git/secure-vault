@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import { AuthProvider } from "./contexts/AuthContext";
 import { useAuth } from "@/contexts/auth";
 import NotFound from "./pages/NotFound";
+import Admin from "./pages/Admin";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +30,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Protected><Index /></Protected>} />
               <Route path="/login" element={<Login />} />
+              <Route path="/admin" element={<Protected><Admin /></Protected>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

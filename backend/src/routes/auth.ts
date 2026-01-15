@@ -4,6 +4,7 @@ import { signJwt } from "../utils/jwt.js";
 import { store, uid } from "../state/store.js";
 import { ldapLogin } from "../auth/ldap.js";
 import { ensureUser, createSession, getUserById } from "../repo/users.js";
+import { writeAudit } from "../repo/audit.js";
 
 export const authRoutes = async (app: FastifyInstance) => {
   app.post("/ldap/login", async (req, reply) => {
@@ -15,6 +16,7 @@ export const authRoutes = async (app: FastifyInstance) => {
       const sessionId = await createSession(id);
       const token = signJwt({ sub: id, sid: sessionId });
       const u = await getUserById(id);
+      await writeAudit(id, "auth_login", "user", id, { username: body.username });
       return reply.send({ token, user: { id, display_name: u?.display_name || body.username } });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "";
@@ -22,6 +24,7 @@ export const authRoutes = async (app: FastifyInstance) => {
       if (msg === "invalid_credentials") return reply.status(401).send({ error: "invalid_credentials" });
       if (msg === "bind_failed") return reply.status(401).send({ error: "invalid_credentials" });
       if (msg === "ldap_unavailable") return reply.status(503).send({ error: "ldap_unavailable" });
+      await writeAudit(null, "auth_login_failed", "user", null, { username: (req.body as { username?: string })?.username });
       return reply.status(503).send({ error: "ldap_unavailable" });
     }
   });

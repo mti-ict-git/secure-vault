@@ -2,24 +2,26 @@ import { useEffect, useRef, useCallback } from 'react';
 
 const BASE = import.meta.env.VITE_API_BASE_URL || '';
 
-export type SyncEventType = 
-  | 'vault.created'
-  | 'vault.updated'
-  | 'vault.deleted'
-  | 'blob.uploaded'
-  | 'blob.deleted'
-  | 'team.created'
-  | 'team.updated'
-  | 'team.deleted'
-  | 'team.member.added'
-  | 'team.member.removed'
-  | 'share.created'
-  | 'share.revoked';
+export type SyncEventKind =
+  | 'vault_create'
+  | 'blob_upload'
+  | 'team_create'
+  | 'team_invite'
+  | 'team_invite_accept'
+  | 'team_update'
+  | 'team_delete'
+  | 'team_role_update'
+  | 'team_member_remove'
+  | 'vault_share'
+  | 'heartbeat';
 
 export interface SyncEvent {
-  type: SyncEventType;
-  payload: Record<string, unknown>;
-  timestamp: string;
+  t: number;
+  type: SyncEventKind;
+  vault_id?: string;
+  team_id?: string;
+  member_id?: string;
+  actor_user_id?: string;
 }
 
 interface UseSyncEventsOptions {
@@ -69,23 +71,10 @@ export function useSyncEvents({
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as SyncEvent;
-        console.log('SSE event received:', data);
-        
         onEvent?.(data);
-
-        // Route to specific handlers
-        if (data.type.startsWith('vault.') && data.payload.vault_id) {
-          onVaultChange?.(data.payload.vault_id as string);
-        }
-        if (data.type.startsWith('team.') && data.payload.team_id) {
-          onTeamChange?.(data.payload.team_id as string);
-        }
-        if (data.type.startsWith('blob.') && data.payload.vault_id) {
-          onVaultChange?.(data.payload.vault_id as string);
-        }
-        if (data.type.startsWith('share.') && data.payload.vault_id) {
-          onVaultChange?.(data.payload.vault_id as string);
-        }
+        if (data.type === 'heartbeat') return;
+        if (data.vault_id) onVaultChange?.(data.vault_id);
+        if (data.team_id) onTeamChange?.(data.team_id);
       } catch (err) {
         console.error('Failed to parse SSE event:', err);
       }

@@ -82,6 +82,7 @@ interface VaultSidebarProps {
   onDeleteTeam: (teamId: string) => void;
   onManageMembers: (team: Team) => void;
   onOpenKdbxDialog: (tab: 'import' | 'export') => void;
+  isAdmin?: boolean;
 }
 
 type FolderOption = { id: string; name: string; depth: number };
@@ -148,6 +149,7 @@ export function VaultSidebar({
   onDeleteTeam,
   onManageMembers,
   onOpenKdbxDialog,
+  isAdmin,
 }: VaultSidebarProps) {
   const [teamsExpanded, setTeamsExpanded] = useState(true);
   const [foldersExpanded, setFoldersExpanded] = useState(true);
@@ -567,6 +569,12 @@ export function VaultSidebar({
           <Settings className="w-4 h-4" />
           <span>Settings</span>
         </button>
+        {isAdmin && (
+          <a href="/admin" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+            <Shield className="w-4 h-4" />
+            <span>Administration</span>
+          </a>
+        )}
         
         <Button
           variant="danger"

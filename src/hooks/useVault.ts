@@ -848,6 +848,16 @@ export function useVault() {
     setNeedsKeySetup(false);
   }, []);
 
+  const refresh = useCallback(async (): Promise<boolean> => {
+    const keys = keysRef.current;
+    if (!keys) return false;
+    const { entries, folders, vaultId } = await fetchAndDecryptVaults(keys);
+    setCurrentVaultId((prev) => prev ?? vaultId);
+    setState(prev => ({ ...prev, entries, folders, lastActivity: new Date() }));
+    resetInactivityTimer();
+    return true;
+  }, [resetInactivityTimer]);
+
   // Track user activity
   useEffect(() => {
     if (state.isLocked) return;
@@ -878,6 +888,7 @@ export function useVault() {
     vaults,
     unlock,
     lock,
+    refresh,
     resetKeys,
     undoLastImport,
     addEntry,

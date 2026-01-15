@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { KeysRegisterSchema } from "../utils/validators.js";
 import { clearKeys, getKeys, upsertKeys } from "../repo/users.js";
+import { writeAudit } from "../repo/audit.js";
 
 export const keysRoutes = async (app: FastifyInstance) => {
   app.post("/register", async (req, reply) => {
@@ -12,6 +13,16 @@ export const keysRoutes = async (app: FastifyInstance) => {
       body.public_sign_key,
       body.public_enc_key,
       body.encrypted_private_key
+    );
+    await writeAudit(
+      userId,
+      "keys_register",
+      "user",
+      userId,
+      {
+        public_sign_key_b64_len: body.public_sign_key.length,
+        public_enc_key_b64_len: body.public_enc_key.length,
+      }
     );
     return reply.send({ ok: true });
   });

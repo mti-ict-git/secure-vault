@@ -41,13 +41,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const t = localStorage.getItem("sv.jwt");
     if (!t) return;
 
-    request<{ id?: string; display_name?: string; email?: string; theme_preference?: "light" | "dark" | "system" }>("/me", { headers: { Authorization: `Bearer ${t}` } }).then((res) => {
+    request<{ id?: string; display_name?: string; email?: string; theme_preference?: "light" | "dark" | "system"; role?: "user" | "admin" }>("/me", { headers: { Authorization: `Bearer ${t}` } }).then((res) => {
       if (res.ok && res.body?.id) {
         setJwt(t);
         const u = {
           id: res.body.id,
           display_name: res.body.display_name,
           theme_preference: res.body.theme_preference,
+          role: res.body.role,
         } as AuthUser;
         setUser(u);
         if (u && u.theme_preference) {
@@ -65,7 +66,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const r = await loginLdap(username, password);
     if (r.ok === false) return { ok: false, error: r.error };
 
-    const me = await request<{ id?: string; display_name?: string; email?: string; theme_preference?: "light" | "dark" | "system" }>("/me", {
+    const me = await request<{ id?: string; display_name?: string; email?: string; theme_preference?: "light" | "dark" | "system"; role?: "user" | "admin" }>("/me", {
       headers: { Authorization: `Bearer ${r.token}` },
     });
     if (!me.ok || !me.body?.id) {
@@ -76,7 +77,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     setJwt(r.token);
-    const u = r.user || { id: me.body.id, display_name: me.body.display_name, theme_preference: me.body.theme_preference };
+    const u = r.user || { id: me.body.id, display_name: me.body.display_name, theme_preference: me.body.theme_preference, role: me.body.role };
     setUser(u);
     if (u && (u as { theme_preference?: "light" | "dark" | "system" }).theme_preference) {
       setTheme((u as { theme_preference?: "light" | "dark" | "system" }).theme_preference!);

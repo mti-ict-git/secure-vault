@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { 
   Activity, 
   Shield, 
@@ -10,10 +10,16 @@ import {
   UserPlus,
   Settings,
   RefreshCw,
-  Loader2 
+  Loader2,
+  User,
+  Lock,
+  Copy,
+  AlertCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { get } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -22,9 +28,9 @@ interface AuditEvent {
   action: string;
   actor_user_id: string;
   actor_username?: string;
-  target_type?: string;
-  target_id?: string;
-  details?: Record<string, unknown>;
+  resource_type?: string;
+  resource_id?: string;
+  details_json?: unknown;
   created_at: string;
 }
 
@@ -38,9 +44,17 @@ const ACTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   'team.invite': UserPlus,
   'team.member.remove': Trash2,
   'team.member.role': Settings,
+  'team.role.update': Settings,
   'share.create': Share2,
   'share.revoke': Trash2,
   'keys.register': Key,
+  'vault.share': Share2,
+  'auth.login': User,
+  'auth.login.failed': AlertCircle,
+  'vault.unlock': Lock,
+  'vault.unlock.failed': AlertCircle,
+  'password.copy': Copy,
+  'username.copy': Copy,
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -53,9 +67,17 @@ const ACTION_LABELS: Record<string, string> = {
   'team.invite': 'Invited member',
   'team.member.remove': 'Removed member',
   'team.member.role': 'Changed member role',
+  'team.role.update': 'Changed member role',
   'share.create': 'Shared vault',
   'share.revoke': 'Revoked share',
   'keys.register': 'Registered keys',
+  'vault.share': 'Shared vault',
+  'auth.login': 'Signed in',
+  'auth.login.failed': 'Failed sign-in',
+  'vault.unlock': 'Unlocked vault',
+  'vault.unlock.failed': 'Failed vault unlock',
+  'password.copy': 'Copied password',
+  'username.copy': 'Copied username',
 };
 
 function formatRelativeTime(dateStr: string): string {
@@ -79,15 +101,26 @@ export function ActivityView() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [since, setSince] = useState('');
+  const [until, setUntil] = useState('');
+  const [action, setAction] = useState('');
 
-  const fetchActivity = async () => {
+  const fetchActivity = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     
     try {
-      const res = await get<{ events: AuditEvent[] }>('/audit');
-      if (res.ok && res.body?.events) {
-        setEvents(res.body.events);
+      const qs = new URLSearchParams();
+      if (since) qs.set('since', since);
+      if (until) qs.set('until', until);
+      if (action) qs.set('action', action);
+      const res = await get<{ items: AuditEvent[] }>(`/audit${qs.toString() ? `?${qs.toString()}` : ''}`);
+      if (res.ok && res.body?.items) {
+        const normalized = (res.body.items || []).map((e) => ({
+          ...e,
+          action: e.action.includes("_") ? e.action.split("_").join(".") : e.action,
+        }));
+        setEvents(normalized);
       } else {
         setError('Failed to load activity');
       }
@@ -96,11 +129,11 @@ export function ActivityView() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [since, until, action]);
 
   useEffect(() => {
-    fetchActivity();
-  }, []);
+    void fetchActivity();
+  }, [fetchActivity]);
 
   if (isLoading) {
     return (
@@ -143,9 +176,53 @@ export function ActivityView() {
         </Button>
       </div>
 
-      {/* Activity list */}
-      <ScrollArea className="flex-1">
-        <div className="p-6">
+      <div className="p-6">
+        <div className="grid grid-cols-12 gap-4">
+          <div className="col-span-12 md:col-span-4">
+            <div className="space-y-3 p-4 border rounded-xl bg-card/40">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Since (ISO)</label>
+                <Input value={since} onChange={(e) => setSince(e.target.value)} placeholder="YYYY-MM-DD" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Until (ISO)</label>
+                <Input value={until} onChange={(e) => setUntil(e.target.value)} placeholder="YYYY-MM-DD" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Action</label>
+                <Select value={action || 'all'} onValueChange={(v) => setAction(v === 'all' ? '' : v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All actions" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All actions</SelectItem>
+                    <SelectItem value="vault.create">Vault create</SelectItem>
+                    <SelectItem value="vault.delete">Vault delete</SelectItem>
+                    <SelectItem value="vault.share">Vault share</SelectItem>
+                    <SelectItem value="blob.upload">Blob upload</SelectItem>
+                    <SelectItem value="blob.delete">Blob delete</SelectItem>
+                    <SelectItem value="team.create">Team create</SelectItem>
+                    <SelectItem value="team.delete">Team delete</SelectItem>
+                    <SelectItem value="team.invite">Team invite</SelectItem>
+                    <SelectItem value="team.member.remove">Team member remove</SelectItem>
+                    <SelectItem value="team.member.role">Team role change</SelectItem>
+                    <SelectItem value="auth.login">Login</SelectItem>
+                    <SelectItem value="auth.login.failed">Login failed</SelectItem>
+                    <SelectItem value="vault.unlock">Unlock vault</SelectItem>
+                    <SelectItem value="vault.unlock.failed">Unlock failed</SelectItem>
+                    <SelectItem value="password.copy">Password copy</SelectItem>
+                    <SelectItem value="username.copy">Username copy</SelectItem>
+                    <SelectItem value="keys.register">Keys register</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={fetchActivity} disabled={isLoading}>Apply Filters</Button>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+            </div>
+          </div>
+          <div className="col-span-12 md:col-span-8">
+            <ScrollArea className="flex-1 h-[60vh]">
+              <div className="p-0">
           {events.length === 0 ? (
             <div className="text-center py-12">
               <Activity className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
@@ -181,9 +258,9 @@ export function ActivityView() {
                                 by {event.actor_username}
                               </p>
                             )}
-                            {event.target_type && event.target_id && (
+                            {event.resource_type && event.resource_id && (
                               <p className="text-xs text-muted-foreground mt-1">
-                                {event.target_type}: {event.target_id.slice(0, 8)}...
+                                {event.resource_type}: {event.resource_id.slice(0, 8)}...
                               </p>
                             )}
                           </div>
@@ -198,8 +275,11 @@ export function ActivityView() {
               </div>
             </div>
           )}
+              </div>
+            </ScrollArea>
+          </div>
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }

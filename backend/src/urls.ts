@@ -7,6 +7,7 @@ import { teamRoutes } from "./routes/teams.js";
 import { shareRoutes } from "./routes/shares.js";
 import { syncRoutes } from "./routes/sync.js";
 import { meRoutes } from "./routes/me.js";
+import { adminRoutes } from "./routes/admin.js";
 
 export const registerRoutes = async (app: FastifyInstance) => {
   await app.register(authRoutes, { prefix: "/auth" });
@@ -17,4 +18,5 @@ export const registerRoutes = async (app: FastifyInstance) => {
   await app.register(shareRoutes, { prefix: "/shares" });
   await app.register(syncRoutes, { prefix: "/sync" });
   await app.register(meRoutes, { prefix: "" });
+  await app.register(adminRoutes, { prefix: "/admin" });
 };

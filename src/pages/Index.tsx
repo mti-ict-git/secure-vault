@@ -4,7 +4,9 @@ import { VaultDashboard } from '@/components/VaultDashboard';
 import { KeySetupDialog } from '@/components/KeySetupDialog';
 import { useVault } from '@/hooks/useVault';
 import { useTeams } from '@/hooks/useTeams';
+import { useSyncEvents } from '@/hooks/useSyncEvents';
 import { Loader2, Shield } from 'lucide-react';
+import { useAuth } from '@/contexts/auth';
 
 const Index = () => {
   const {
@@ -15,6 +17,7 @@ const Index = () => {
     isCheckingKeys,
     unlock,
     lock,
+    refresh,
     resetKeys,
     addEntry,
     updateEntry,
@@ -24,6 +27,8 @@ const Index = () => {
     addFolder,
     deleteFolder,
     onKeySetupComplete,
+    currentVaultId,
+    getCurrentVaultKey,
     getVaultIdForTeamId,
     getVaultKeyByVaultId,
     getPermissionsForTeamId,
@@ -41,7 +46,18 @@ const Index = () => {
     getTeamInvites,
     isInvitePending,
     acceptInvite,
+    refreshTeams,
+    refreshTeamMembers,
   } = useTeams({ getVaultIdForTeamId, getVaultKeyByVaultId });
+
+  const { user } = useAuth();
+  const isAdmin = !!user && (user as { role?: 'user' | 'admin' }).role === 'admin';
+
+  useSyncEvents({
+    enabled: !isLocked,
+    onVaultChange: () => { void refresh(); },
+    onTeamChange: (teamId) => { void refreshTeams(); void refreshTeamMembers(teamId); },
+  });
 
   
 
@@ -74,6 +90,7 @@ const Index = () => {
       folders={folders}
       teams={teams}
       onLock={lock}
+      onRefresh={() => { void refresh(); }}
       onAddEntry={addEntry}
       onUpdateEntry={updateEntry}
       onDeleteEntry={deleteEntry}
@@ -92,6 +109,11 @@ const Index = () => {
       onAcceptInvite={acceptInvite}
       getPermissionsForTeamId={getPermissionsForTeamId}
       onImportEntries={importEntries}
+      currentVaultId={currentVaultId}
+      getCurrentVaultKey={getCurrentVaultKey}
+      getVaultIdForTeamId={getVaultIdForTeamId}
+      getVaultKeyByVaultId={getVaultKeyByVaultId}
+      isAdmin={isAdmin}
     />
   );
 };

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Plus, Filter, SortAsc, Users, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X, ListChecks } from 'lucide-react';
+import { Search, Plus, Filter, SortAsc, Users, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X, ListChecks, RefreshCw, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { VaultSidebar } from '@/components/VaultSidebar';
@@ -8,6 +8,7 @@ import { AddEntryDialog } from '@/components/AddEntryDialog';
 import { CreateTeamDialog } from '@/components/CreateTeamDialog';
 import { TeamMembersDialog } from '@/components/TeamMembersDialog';
 import { KdbxImportExportDialog } from '@/components/KdbxImportExportDialog';
+import { ShareVaultDialog } from '@/components/ShareVaultDialog';
 import { SecurityDashboard } from '@/components/SecurityDashboard';
 import { PasswordEntry, Folder, Team, TeamInvite } from '@/types/vault';
 import { downloadFile } from '@/lib/kdbx-utils';
@@ -98,6 +99,7 @@ interface VaultDashboardProps {
   folders: Folder[];
   teams: Team[];
   onLock: () => void;
+  onRefresh: () => void | Promise<void>;
   onAddEntry: (entry: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onUpdateEntry: (id: string, updates: Partial<PasswordEntry>) => void;
   onDeleteEntry: (id: string) => void;
@@ -119,6 +121,12 @@ interface VaultDashboardProps {
   getPermissionsForTeamId?: (teamId: string) => 'read' | 'write' | null;
   // Import/Export
   onImportEntries: (entries: KdbxImportedEntry[], folders: KdbxImportedFolder[]) => void;
+  // Vault share helpers
+  currentVaultId: string | null;
+  getCurrentVaultKey: () => Uint8Array | null;
+  getVaultIdForTeamId: (teamId: string) => string | null;
+  getVaultKeyByVaultId: (vaultId: string) => Uint8Array | null;
+  isAdmin?: boolean;
 }
 
 export function VaultDashboard({
@@ -126,6 +134,7 @@ export function VaultDashboard({
   folders,
   teams,
   onLock,
+  onRefresh,
   onAddEntry,
   onUpdateEntry,
   onDeleteEntry,
@@ -144,6 +153,11 @@ export function VaultDashboard({
   onAcceptInvite,
   getPermissionsForTeamId,
   onImportEntries,
+  currentVaultId,
+  getCurrentVaultKey,
+  getVaultIdForTeamId,
+  getVaultKeyByVaultId,
+  isAdmin,
 }: VaultDashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
@@ -162,6 +176,9 @@ export function VaultDashboard({
   const [bulkMoveFolderId, setBulkMoveFolderId] = useState<string | null>(null);
   const [bulkCopyOpen, setBulkCopyOpen] = useState(false);
   const [bulkCopyTeamId, setBulkCopyTeamId] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareVaultId, setShareVaultId] = useState<string | null>(null);
+  const [shareVaultKey, setShareVaultKey] = useState<Uint8Array | null>(null);
   
   // Team dialogs
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
@@ -177,6 +194,22 @@ export function VaultDashboard({
   const openKdbxDialog = (tab: 'import' | 'export') => {
     setKdbxDialogTab(tab);
     setKdbxDialogOpen(true);
+  };
+
+  const openShareDialog = () => {
+    const vId = selectedTeam ? getVaultIdForTeamId(selectedTeam) : currentVaultId;
+    if (!vId) {
+      toast.error('Vault not available');
+      return;
+    }
+    const vKey = selectedTeam ? getVaultKeyByVaultId(vId) : getCurrentVaultKey();
+    if (!vKey) {
+      toast.error('Vault key unavailable');
+      return;
+    }
+    setShareVaultId(vId);
+    setShareVaultKey(vKey);
+    setShareOpen(true);
   };
 
   // Get personal entries (no teamId)
@@ -453,6 +486,7 @@ export function VaultDashboard({
         onDeleteTeam={(id) => setDeleteTeamId(id)}
         onManageMembers={(team) => setMembersTeamId(team.id)}
         onOpenKdbxDialog={openKdbxDialog}
+        isAdmin={isAdmin}
       />
 
       <main className="flex-1 flex flex-col overflow-hidden">
@@ -468,21 +502,24 @@ export function VaultDashboard({
               />
             </div>
             
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" onClick={() => openKdbxDialog('import')} title="Import/Export KeePass">
-                <FileKey className="w-4 h-4" />
-              </Button>
-              <Button variant="outline" size="icon">
-                <Filter className="w-4 h-4" />
-              </Button>
-              <Button variant="outline" size="icon">
-                <SortAsc className="w-4 h-4" />
-              </Button>
-              <Button onClick={() => setAddDialogOpen(true)} disabled={selectedTeam ? isTeamReadOnly : false}>
-                <Plus className="w-4 h-4" />
-                {selectedTeam ? (isTeamReadOnly ? 'Read-only' : 'Share Password') : 'Add Entry'}
-              </Button>
-            </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={() => openKdbxDialog('import')} title="Import/Export KeePass">
+              <FileKey className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="icon">
+              <Filter className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="icon">
+              <SortAsc className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="icon" onClick={openShareDialog}>
+              <Share2 className="w-4 h-4" />
+            </Button>
+            <Button onClick={() => setAddDialogOpen(true)} disabled={selectedTeam ? isTeamReadOnly : false}>
+              <Plus className="w-4 h-4" />
+              {selectedTeam ? (isTeamReadOnly ? 'Read-only' : 'Share Password') : 'Add Entry'}
+            </Button>
+          </div>
           </div>
         </header>
 
@@ -516,6 +553,10 @@ export function VaultDashboard({
                     )}
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => void onRefresh()}>
+                      <RefreshCw className="w-4 h-4" />
+                      Refresh
+                    </Button>
                     {filteredEntries.length > 0 && (
                       <Button variant="outline" size="sm" onClick={toggleSelectAllFiltered}>
                         <ListChecks className="w-4 h-4" />
@@ -599,7 +640,7 @@ export function VaultDashboard({
                   </div>
                 )}
 
-                {filteredEntries.length === 0 ? (
+        {filteredEntries.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="w-16 h-16 rounded-2xl bg-muted mx-auto mb-4 flex items-center justify-center">
                       {selectedTeam ? <Users className="w-8 h-8 text-muted-foreground" /> : <Search className="w-8 h-8 text-muted-foreground" />}
@@ -621,7 +662,7 @@ export function VaultDashboard({
                       </Button>
                     )}
                   </div>
-                ) : (
+        ) : (
                   <div className="space-y-3">
                     {filteredEntries.map((entry) => (
                       <PasswordEntryCard
@@ -638,9 +679,16 @@ export function VaultDashboard({
                       />
                     ))}
                   </div>
-                )}
-              </>
-            )}
+        )}
+
+        <ShareVaultDialog
+          open={shareOpen}
+          onOpenChange={(o) => setShareOpen(o)}
+          vaultId={shareVaultId || ''}
+          vaultKey={shareVaultKey}
+        />
+      </>
+      )}
           </div>
         </div>
       </main>
