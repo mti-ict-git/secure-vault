@@ -126,7 +126,11 @@ export function PasswordEntryCard({ entry, selected, onSelectedChange, onToggleF
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => setShowPassword(!showPassword)}
+              onMouseDown={() => setShowPassword(true)}
+              onMouseUp={() => setShowPassword(false)}
+              onMouseLeave={() => setShowPassword(false)}
+              onTouchStart={() => setShowPassword(true)}
+              onTouchEnd={() => setShowPassword(false)}
               className="flex-shrink-0"
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}

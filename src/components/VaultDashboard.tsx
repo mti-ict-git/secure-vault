@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Search, Plus, Filter, SortAsc, Users, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X, ListChecks, RefreshCw, Share2 } from 'lucide-react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { Search, Plus, Filter, SortAsc, Users, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X, ListChecks, RefreshCw, Share2, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { VaultSidebar } from '@/components/VaultSidebar';
@@ -45,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
+import { get, post } from '@/lib/api';
 
 type FolderOption = { id: string; name: string; depth: number };
 
@@ -120,7 +121,7 @@ interface VaultDashboardProps {
   // Permissions
   getPermissionsForTeamId?: (teamId: string) => 'read' | 'write' | null;
   // Import/Export
-  onImportEntries: (entries: KdbxImportedEntry[], folders: KdbxImportedFolder[]) => void;
+  onImportEntries: (entries: KdbxImportedEntry[], folders: KdbxImportedFolder[], meta?: { filename?: string }) => void;
   // Vault share helpers
   currentVaultId: string | null;
   getCurrentVaultKey: () => Uint8Array | null;
@@ -164,6 +165,158 @@ export function VaultDashboard({
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
   const [showSecurity, setShowSecurity] = useState(false);
+  const [showAdminAudit, setShowAdminAudit] = useState(false);
+  type AdminAuditItem = {
+    id: string;
+    action: string;
+    actor_user_id: string | null;
+    actor_username?: string | null;
+    resource_type?: string | null;
+    resource_id?: string | null;
+    details_json?: unknown;
+    created_at: string;
+  };
+  const [adminItems, setAdminItems] = useState<AdminAuditItem[]>([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState<string | null>(null);
+  const [adminActorId, setAdminActorId] = useState('');
+  const [adminSince, setAdminSince] = useState('');
+  const [adminUntil, setAdminUntil] = useState('');
+  const normalizeAction = (a: string) => (a.includes('_') ? a.split('_').join('.') : a);
+  const adminLoad = useCallback(async () => {
+    setAdminLoading(true);
+    setAdminError(null);
+    const qs = new URLSearchParams();
+    if (adminActorId) qs.set('actor_id', adminActorId);
+    if (adminSince) qs.set('since', adminSince);
+    if (adminUntil) qs.set('until', adminUntil);
+    const res = await get<{ items: AdminAuditItem[] }>(`/admin/audit${qs.toString() ? '?' + qs.toString() : ''}`);
+    if (!res.ok) {
+      setAdminError('Failed to load audit');
+      setAdminItems([]);
+    } else {
+      setAdminItems(res.body?.items || []);
+    }
+    setAdminLoading(false);
+  }, [adminActorId, adminSince, adminUntil]);
+  useEffect(() => {
+    if (showAdminAudit && isAdmin) {
+      void adminLoad();
+    }
+  }, [showAdminAudit, isAdmin, adminLoad]);
+  const adminActionCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const it of adminItems) {
+      const k = normalizeAction(it.action);
+      map.set(k, (map.get(k) || 0) + 1);
+    }
+    return map;
+  }, [adminItems]);
+  const adminTopCopied = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const it of adminItems) {
+      const k = normalizeAction(it.action);
+      if (k !== 'password.copy' && k !== 'username.copy') continue;
+      const rid = it.resource_id;
+      const rtype = it.resource_type;
+      if (!rid || rtype !== 'entry') continue;
+      counts.set(rid, (counts.get(rid) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [adminItems]);
+  const adminTopSharers = useMemo(() => {
+    const counts = new Map<string, number>();
+    const names = new Map<string, string>();
+    for (const it of adminItems) {
+      const k = normalizeAction(it.action);
+      if (k !== 'vault.share' && k !== 'entry.copy.to.team') continue;
+      const actor = it.actor_user_id || '';
+      counts.set(actor, (counts.get(actor) || 0) + 1);
+      if (it.actor_username) names.set(actor, it.actor_username);
+    }
+    return Array.from(counts.entries())
+      .map(([key, count]) => ({ key, label: names.get(key) || key, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [adminItems]);
+  const adminTopCopiers = useMemo(() => {
+    const counts = new Map<string, number>();
+    const names = new Map<string, string>();
+    for (const it of adminItems) {
+      const k = normalizeAction(it.action);
+      if (k !== 'password.copy' && k !== 'username.copy') continue;
+      const actor = it.actor_user_id || '';
+      counts.set(actor, (counts.get(actor) || 0) + 1);
+      if (it.actor_username) names.set(actor, it.actor_username);
+    }
+    return Array.from(counts.entries())
+      .map(([key, count]) => ({ key, label: names.get(key) || key, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [adminItems]);
+  const exportScopeCounts = useMemo(() => {
+    const byScope = new Map<string, number>();
+    const byType = new Map<string, number>();
+    for (const it of adminItems) {
+      const k = normalizeAction(it.action);
+      if (!k.startsWith('export.')) continue;
+      const d = it.details_json as Record<string, unknown> | undefined;
+      const scope = (d?.scope as string | undefined) || '';
+      const type = k.split('.')[1] || '';
+      if (scope) byScope.set(scope, (byScope.get(scope) || 0) + 1);
+      if (type) byType.set(type, (byType.get(type) || 0) + 1);
+    }
+    return { byScope, byType };
+  }, [adminItems]);
+  const renderAdminDetails = (it: AdminAuditItem) => {
+    const a = normalizeAction(it.action);
+    const d = it.details_json as Record<string, unknown> | undefined;
+    const text = (() => {
+      if (a === 'export.json') {
+        const c = d?.count as number | undefined;
+        const fn = d?.filename as string | undefined;
+        const sc = d?.scope as string | undefined;
+        return `${c || 0} items • ${fn || ''} • ${sc || ''}`.trim();
+      }
+      if (a === 'export.csv') {
+        const c = d?.count as number | undefined;
+        const fn = d?.filename as string | undefined;
+        const sc = d?.scope as string | undefined;
+        return `${c || 0} items • ${fn || ''} • ${sc || ''}`.trim();
+      }
+      if (a === 'export.kdbx') {
+        const db = d?.databaseName as string | undefined;
+        const ec = d?.personalEntryCount as number | undefined;
+        const fc = d?.personalFolderCount as number | undefined;
+        return `${db || ''} • entries ${ec || 0} • folders ${fc || 0}`.trim();
+      }
+      if (a === 'import.kdbx') {
+        const ec = d?.entries as number | undefined;
+        const fc = d?.folders as number | undefined;
+        const fn = d?.filename as string | undefined;
+        return `${ec || 0} entries • ${fc || 0} folders • ${fn || ''}`.trim();
+      }
+      if (a === 'entry.update') {
+        const mt = d?.moved_team as boolean | undefined;
+        const mf = d?.moved_folder as boolean | undefined;
+        return `${mt ? 'team moved' : ''} ${mf ? 'folder moved' : ''}`.trim();
+      }
+      if (a === 'folder.delete') {
+        const cc = d?.cascade_count as number | undefined;
+        return `deleted ${cc || 0} folder(s)`;
+      }
+      if (a === 'entry.favorite') {
+        const fav = d?.favorite as boolean | undefined;
+        return fav ? 'marked favorite' : 'unmarked favorite';
+      }
+      return '';
+    })();
+    if (!text) return null;
+    return <div className="text-xs text-muted-foreground">{text}</div>;
+  };
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<PasswordEntry | null>(null);
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
@@ -328,6 +481,7 @@ export function VaultDashboard({
     }));
     downloadText(JSON.stringify(payload, null, 2), filename);
     toast.success(`Exported ${selectedCount} entries`);
+    void post('/audit/log', { action: 'export_json', resource_type: 'vault', resource_id: selectedTeam ? selectedTeam : currentVaultId, details: { count: selectedCount, filename, scope: selectedTeam ? 'team' : 'personal' } });
     clearSelection();
   };
 
@@ -349,6 +503,7 @@ export function VaultDashboard({
     }));
     downloadText(toCsv(rows), filename);
     toast.success(`Exported ${selectedCount} entries`);
+    void post('/audit/log', { action: 'export_csv', resource_type: 'vault', resource_id: selectedTeam ? selectedTeam : currentVaultId, details: { count: selectedCount, filename, scope: selectedTeam ? 'team' : 'personal' } });
     clearSelection();
   };
 
@@ -401,6 +556,7 @@ export function VaultDashboard({
       onAddEntry(payload);
     });
     toast.success(`Copied ${selectedCount} entr${selectedCount === 1 ? 'y' : 'ies'} to team`);
+    void post('/audit/log', { action: 'entry_copy_to_team', resource_type: 'team', resource_id: targetTeamId, details: { count: selectedCount } });
     clearSelection();
     setBulkCopyOpen(false);
     setBulkCopyTeamId(null);
@@ -467,9 +623,11 @@ export function VaultDashboard({
         selectedFolder={selectedFolder}
         selectedTeam={selectedTeam}
         showSecurity={showSecurity}
+        showAdminAudit={showAdminAudit}
         onSelectFolder={setSelectedFolder}
         onSelectTeam={setSelectedTeam}
         onToggleSecurity={() => setShowSecurity(!showSecurity)}
+        onToggleAdminAudit={() => setShowAdminAudit(!showAdminAudit)}
         showFavorites={showFavorites}
         onToggleFavorites={() => setShowFavorites(!showFavorites)}
         entryCount={personalEntries.length}
@@ -526,7 +684,189 @@ export function VaultDashboard({
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="max-w-4xl mx-auto">
-            {showSecurity ? (
+            {showAdminAudit ? (
+              <>
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <Activity className="w-5 h-5 text-primary" />
+                    <h2 className="text-xl font-semibold text-foreground">Audit & Compliance</h2>
+                    <span className="text-sm text-muted-foreground">Monitor system activity with filters, metrics, top copied credentials, and sharing counts</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => void adminLoad()}>
+                      <RefreshCw className="w-4 h-4" />
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-12 gap-4">
+                  <div className="col-span-12 md:col-span-4">
+                    <div className="space-y-3 p-4 border rounded-xl bg-card/40">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Actor ID</label>
+                        <Input value={adminActorId} onChange={(e) => setAdminActorId(e.target.value)} placeholder="optional" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Since (ISO)</label>
+                        <Input value={adminSince} onChange={(e) => setAdminSince(e.target.value)} placeholder="YYYY-MM-DD" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Until (ISO)</label>
+                        <Input value={adminUntil} onChange={(e) => setAdminUntil(e.target.value)} placeholder="YYYY-MM-DD" />
+                      </div>
+                      <Button onClick={() => void adminLoad()} disabled={adminLoading}>Apply Filters</Button>
+                      {adminError && <p className="text-sm text-destructive">{adminError}</p>}
+                    </div>
+                  </div>
+                  <div className="col-span-12 md:col-span-8">
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-12 gap-4">
+                        <div className="col-span-12 md:col-span-4">
+                          <div className="p-4 border rounded-xl bg-background/50">
+                            <div className="text-sm font-medium text-muted-foreground">Total Events</div>
+                            <div className="text-2xl font-bold text-foreground">{adminItems.length}</div>
+                          </div>
+                        </div>
+                        <div className="col-span-12 md:col-span-4">
+                          <div className="p-4 border rounded-xl bg-background/50">
+                            <div className="text-sm font-medium text-muted-foreground">Shares</div>
+                            <div className="text-2xl font-bold text-foreground">{adminActionCounts.get('vault.share') || 0}</div>
+                          </div>
+                        </div>
+                        <div className="col-span-12 md:col-span-4">
+                          <div className="p-4 border rounded-xl bg-background/50">
+                            <div className="text-sm font-medium text-muted-foreground">Copies</div>
+                            <div className="text-2xl font-bold text-foreground">{(adminActionCounts.get('password.copy') || 0) + (adminActionCounts.get('username.copy') || 0)}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 border rounded-xl bg-card/40">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="text-sm font-medium">Recent Events</div>
+                          <div className="text-xs text-muted-foreground">Details shown when available</div>
+                        </div>
+                        <div className="space-y-3">
+                          {adminItems.map((it) => (
+                            <div key={it.id} className="p-3 border rounded-xl bg-card/40">
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <div className="text-sm font-medium">{normalizeAction(it.action)}</div>
+                                  <div className="text-xs text-muted-foreground">{it.actor_username || it.actor_user_id || ''}</div>
+                                  {it.resource_type && it.resource_id && (
+                                    <div className="text-xs text-muted-foreground">{it.resource_type}: {String(it.resource_id).slice(0,8)}...</div>
+                                  )}
+                                  {renderAdminDetails(it)}
+                                </div>
+                                <div className="text-xs text-muted-foreground whitespace-nowrap">{new Date(it.created_at).toLocaleString()}</div>
+                              </div>
+                            </div>
+                          ))}
+                          {adminItems.length === 0 && !adminLoading && (
+                            <div className="text-center py-12">
+                              <Activity className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
+                              <p className="text-muted-foreground">No audit data</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="p-4 border rounded-xl bg-card/40">
+                        <div className="text-sm font-medium mb-2">Top Copied Credentials</div>
+                        <div className="space-y-2">
+                          {adminTopCopied.map((row) => (
+                            <div key={row.key} className="flex items-center justify-between text-sm">
+                              <div className="text-muted-foreground">entry: {row.key.slice(0,8)}...</div>
+                              <div className="font-medium">{row.count}</div>
+                            </div>
+                          ))}
+                          {adminTopCopied.length === 0 && (
+                            <div className="text-xs text-muted-foreground">No copy events</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="p-4 border rounded-xl bg-card/40">
+                        <div className="text-sm font-medium mb-2">Sharing Activity</div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="text-muted-foreground">Vault shares</div>
+                            <div className="font-medium">{adminActionCounts.get('vault.share') || 0}</div>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="text-muted-foreground">Entry copy to team</div>
+                            <div className="font-medium">{adminActionCounts.get('entry.copy.to.team') || 0}</div>
+                          </div>
+                          <div className="mt-3">
+                            <div className="text-xs font-medium text-muted-foreground mb-1">Top Sharers</div>
+                            <div className="space-y-1">
+                              {adminTopSharers.map((row) => (
+                                <div key={row.key} className="flex items-center justify-between text-xs">
+                                  <div className="text-muted-foreground">{row.label}</div>
+                                  <div className="font-medium">{row.count}</div>
+                                </div>
+                              ))}
+                              {adminTopSharers.length === 0 && (
+                                <div className="text-xs text-muted-foreground">No sharing events</div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="mt-3">
+                            <div className="text-xs font-medium text-muted-foreground mb-1">Top Copiers</div>
+                            <div className="space-y-1">
+                              {adminTopCopiers.map((row) => (
+                                <div key={row.key} className="flex items-center justify-between text-xs">
+                                  <div className="text-muted-foreground">{row.label}</div>
+                                  <div className="font-medium">{row.count}</div>
+                                </div>
+                              ))}
+                              {adminTopCopiers.length === 0 && (
+                                <div className="text-xs text-muted-foreground">No copy events</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 border rounded-xl bg-card/40">
+                        <div className="text-sm font-medium mb-2">Export Activity</div>
+                        <div className="grid grid-cols-12 gap-4">
+                          <div className="col-span-12 md:col-span-6">
+                            <div className="text-xs font-medium text-muted-foreground mb-1">By Scope</div>
+                            <div className="space-y-1">
+                              {Array.from(exportScopeCounts.byScope.entries()).map(([scope, count]) => (
+                                <div key={scope} className="flex items-center justify-between text-xs">
+                                  <div className="text-muted-foreground">{scope || 'unknown'}</div>
+                                  <div className="font-medium">{count}</div>
+                                </div>
+                              ))}
+                              {exportScopeCounts.byScope.size === 0 && (
+                                <div className="text-xs text-muted-foreground">No export events</div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="col-span-12 md:col-span-6">
+                            <div className="text-xs font-medium text-muted-foreground mb-1">By Type</div>
+                            <div className="space-y-1">
+                              {Array.from(exportScopeCounts.byType.entries()).map(([type, count]) => (
+                                <div key={type} className="flex items-center justify-between text-xs">
+                                  <div className="text-muted-foreground">{type}</div>
+                                  <div className="font-medium">{count}</div>
+                                </div>
+                              ))}
+                              {exportScopeCounts.byType.size === 0 && (
+                                <div className="text-xs text-muted-foreground">No export events</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : showSecurity ? (
               <>
                 <div className="flex items-center gap-3 mb-6">
                   <ShieldCheck className="w-5 h-5 text-primary" />
@@ -882,8 +1222,9 @@ export function VaultDashboard({
         initialTab={kdbxDialogTab}
         entries={entries}
         folders={folders}
-        onImport={(importedEntries, importedFolders) => {
-          onImportEntries(importedEntries, importedFolders);
+        currentVaultId={currentVaultId}
+        onImport={(importedEntries, importedFolders, meta) => {
+          onImportEntries(importedEntries, importedFolders, meta);
           toast.success(`Imported ${importedEntries.length} entries`);
         }}
       />

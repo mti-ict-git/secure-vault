@@ -23,6 +23,12 @@ npm run dev
 - View organization-wide audit and compliance events with server-side filters.
 - Events include login attempts, vault unlocks, and copy/share actions.
 
+## Security & UX
+
+- Eye icon uses hold-to-reveal: shows password only while pressed.
+- Password copies auto-clear from clipboard after 30s.
+- Copy actions are logged to the audit trail.
+
 ## Share a Vault
 
 1. Unlock your vault and open the dashboard.

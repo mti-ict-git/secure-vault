@@ -66,9 +66,11 @@ interface VaultSidebarProps {
   selectedFolder: string | null;
   selectedTeam: string | null;
   showSecurity: boolean;
+  showAdminAudit?: boolean;
   onSelectFolder: (folderId: string | null) => void;
   onSelectTeam: (teamId: string | null) => void;
   onToggleSecurity: () => void;
+  onToggleAdminAudit?: () => void;
   showFavorites: boolean;
   onToggleFavorites: () => void;
   entryCount: number;
@@ -133,9 +135,11 @@ export function VaultSidebar({
   selectedFolder,
   selectedTeam,
   showSecurity,
+  showAdminAudit,
   onSelectFolder,
   onSelectTeam,
   onToggleSecurity,
+  onToggleAdminAudit,
   showFavorites,
   onToggleFavorites,
   entryCount,
@@ -565,15 +569,27 @@ export function VaultSidebar({
           <FileDown className="w-4 h-4" />
           <span>Export Vault</span>
         </button>
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+        <a href="/settings" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
           <Settings className="w-4 h-4" />
           <span>Settings</span>
-        </button>
+        </a>
         {isAdmin && (
-          <a href="/admin" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+          <button
+            onClick={() => {
+              onSelectTeam(null);
+              onSelectFolder(null);
+              if (showFavorites) onToggleFavorites();
+              if (showSecurity) onToggleSecurity();
+              if (onToggleAdminAudit) onToggleAdminAudit();
+            }}
+            className={cn(
+              'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+              showAdminAudit && !selectedTeam ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            )}
+          >
             <Shield className="w-4 h-4" />
-            <span>Administration</span>
-          </a>
+            <span>Audit & Compliance</span>
+          </button>
         )}
         
         <Button

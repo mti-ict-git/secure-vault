@@ -22,6 +22,7 @@ import {
   KdbxImportedFolder,
   KdbxImportResult,
 } from '@/lib/kdbx-utils';
+import { post } from '@/lib/api';
 
 interface KdbxImportExportDialogProps {
   open: boolean;
@@ -29,7 +30,8 @@ interface KdbxImportExportDialogProps {
   initialTab?: 'import' | 'export';
   entries: PasswordEntry[];
   folders: Folder[];
-  onImport: (entries: KdbxImportedEntry[], folders: KdbxImportedFolder[]) => void;
+  currentVaultId?: string | null;
+  onImport: (entries: KdbxImportedEntry[], folders: KdbxImportedFolder[], meta?: { filename?: string }) => void;
 }
 
 export function KdbxImportExportDialog({
@@ -38,6 +40,7 @@ export function KdbxImportExportDialog({
   initialTab,
   entries,
   folders,
+  currentVaultId,
   onImport,
 }: KdbxImportExportDialogProps) {
   const [activeTab, setActiveTab] = useState<'import' | 'export'>('import');
@@ -147,7 +150,7 @@ export function KdbxImportExportDialog({
 
   const confirmImport = () => {
     if (importResult) {
-      onImport(importResult.entries, importResult.folders);
+      onImport(importResult.entries, importResult.folders, { filename: importFile?.name });
       close();
     }
   };
@@ -178,6 +181,7 @@ export function KdbxImportExportDialog({
       });
       
       downloadFile(data, `${exportName}.kdbx`);
+      void post('/audit/log', { action: 'export_kdbx', resource_type: 'vault', resource_id: currentVaultId || null, details: { databaseName: exportName, personalEntryCount, personalFolderCount } });
       setExportSuccess(true);
       
       // Auto-close after success

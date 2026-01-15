@@ -14,7 +14,12 @@ import {
   User,
   Lock,
   Copy,
-  AlertCircle
+  AlertCircle,
+  FilePlus,
+  Pencil,
+  Folder,
+  Download,
+  Star
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -55,6 +60,17 @@ const ACTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   'vault.unlock.failed': AlertCircle,
   'password.copy': Copy,
   'username.copy': Copy,
+  'entry.create': FilePlus,
+  'entry.update': Pencil,
+  'entry.delete': Trash2,
+  'entry.favorite': Star,
+  'folder.create': Folder,
+  'folder.delete': Trash2,
+  'export.json': Download,
+  'export.csv': Download,
+  'export.kdbx': Download,
+  'import.kdbx': Upload,
+  'entry.copy.to.team': Share2,
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -78,6 +94,17 @@ const ACTION_LABELS: Record<string, string> = {
   'vault.unlock.failed': 'Failed vault unlock',
   'password.copy': 'Copied password',
   'username.copy': 'Copied username',
+  'entry.create': 'Created credential',
+  'entry.update': 'Updated credential',
+  'entry.delete': 'Deleted credential',
+  'entry.favorite': 'Toggled favorite',
+  'folder.create': 'Created folder',
+  'folder.delete': 'Deleted folder',
+  'export.json': 'Exported entries (JSON)',
+  'export.csv': 'Exported entries (CSV)',
+  'export.kdbx': 'Exported KeePass (.kdbx)',
+  'import.kdbx': 'Imported from KeePass',
+  'entry.copy.to.team': 'Copied entries to team',
 };
 
 function formatRelativeTime(dateStr: string): string {

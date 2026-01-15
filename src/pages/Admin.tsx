@@ -69,8 +69,8 @@ const Admin = () => {
             <Activity className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold">Administration</h2>
-            <p className="text-sm text-muted-foreground">Audit and compliance</p>
+            <h2 className="text-lg font-semibold">Audit & Compliance</h2>
+            <p className="text-sm text-muted-foreground">System-wide audit logs</p>
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={load}>
@@ -129,4 +129,3 @@ const Admin = () => {
 };
 
 export default Admin;
-

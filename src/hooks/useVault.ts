@@ -568,7 +568,7 @@ export function useVault() {
     setCanUndoLastImport(false);
     lastImportRef.current = null;
     resetInactivityTimer();
-  }, [resetInactivityTimer, saveAllVaultSnapshots]);
+  }, [resetInactivityTimer, saveAllVaultSnapshots, currentVaultId]);
 
   const addFolder = useCallback(
     async (name: string, parentId?: string) => {
@@ -585,6 +585,7 @@ export function useVault() {
           folders: [...prev.folders, { id, name: trimmed, parentId }],
         };
         void saveVaultSnapshotForSingleVault(personalVaultId, next.entries, next.folders);
+        void post('/audit/log', { action: 'folder_create', resource_type: 'folder', resource_id: id, details: { name_len: trimmed.length, parent_id: parentId || null } });
         return next;
       });
       resetInactivityTimer();
@@ -617,13 +618,14 @@ export function useVault() {
           for (const k of kids) stack.push(k);
         }
 
-        const folders = prev.folders.filter((f) => f.teamId || !toDelete.has(f.id));
-        const entries = prev.entries.map((e) =>
-          e.teamId || !e.folderId || !toDelete.has(e.folderId) ? e : { ...e, folderId: undefined }
-        );
+      const folders = prev.folders.filter((f) => f.teamId || !toDelete.has(f.id));
+      const entries = prev.entries.map((e) =>
+        e.teamId || !e.folderId || !toDelete.has(e.folderId) ? e : { ...e, folderId: undefined }
+      );
 
         const next = { ...prev, entries, folders };
         void saveVaultSnapshotForSingleVault(personalVaultId, next.entries, next.folders);
+        void post('/audit/log', { action: 'folder_delete', resource_type: 'folder', resource_id: folderId, details: { cascade_count: toDelete.size } });
         return next;
       });
       resetInactivityTimer();
@@ -699,6 +701,7 @@ export function useVault() {
         entries: [...prev.entries, newEntry],
       };
       void saveVaultSnapshotForSingleVault(targetVaultId, newState.entries, newState.folders);
+      void post('/audit/log', { action: 'entry_create', resource_type: 'entry', resource_id: newEntry.id, details: { has_url: !!newEntry.url, title_len: newEntry.title.length, username_len: newEntry.username.length, team_id: newEntry.teamId || null, folder_id: newEntry.folderId || null } });
       return newState;
     });
     resetInactivityTimer();
@@ -724,6 +727,7 @@ export function useVault() {
       void Promise.all(
         saveVaultIds.map((vaultId) => saveVaultSnapshotForSingleVault(vaultId, newState.entries, newState.folders))
       );
+      void post('/audit/log', { action: 'entry_update', resource_type: 'entry', resource_id: id, details: { moved_team: existing.teamId !== updated.teamId, moved_folder: existing.folderId !== updated.folderId } });
       return newState;
     });
     resetInactivityTimer();
@@ -744,6 +748,7 @@ export function useVault() {
       if (saveVaultId) {
         void saveVaultSnapshotForSingleVault(saveVaultId, newState.entries, newState.folders);
       }
+      void post('/audit/log', { action: 'entry_delete', resource_type: 'entry', resource_id: id, details: { team_id: existing.teamId || null } });
       return newState;
     });
     resetInactivityTimer();
@@ -764,6 +769,7 @@ export function useVault() {
       if (saveVaultId) {
         void saveVaultSnapshotForSingleVault(saveVaultId, newState.entries, newState.folders);
       }
+      void post('/audit/log', { action: 'entry_favorite', resource_type: 'entry', resource_id: id, details: { favorite: updated.favorite } });
       return newState;
     });
     resetInactivityTimer();
@@ -771,7 +777,8 @@ export function useVault() {
 
   const importEntries = useCallback(async (
     newEntries: KdbxImportedEntry[],
-    newFolders: KdbxImportedFolder[]
+    newFolders: KdbxImportedFolder[],
+    meta?: { filename?: string }
   ) => {
     const folderIdMap = new Map<string, string>();
     for (const folder of newFolders) {
@@ -818,6 +825,7 @@ export function useVault() {
         folders: [...prev.folders, ...foldersWithIds],
       };
       void saveAllVaultSnapshots(newState.entries, newState.folders);
+      void post('/audit/log', { action: 'import_kdbx', resource_type: 'vault', resource_id: currentVaultId, details: { entries: entriesWithIds.length, folders: foldersWithIds.length, filename: meta?.filename || null } });
       return newState;
     });
     resetInactivityTimer();

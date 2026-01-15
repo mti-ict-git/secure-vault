@@ -297,6 +297,10 @@
 - Created LDAP bind test script and validated identifiers:
 - DN: OK, UPN: OK, MBMA\\username: OK, sAMAccountName: 52e invalid credentials.
 - Updated backend to try typed DOMAIN\\username first when provided.
+## 2026-01-15 22:15:47 +0700
+- Added admin role setup script and granted admin to provided DN.
+- Verified login via UPN and /me shows role: admin.
+- Admin link visible in sidebar; /admin route protected by server.
 ## Thu Jan 15 21:48:52 WIB 2026
 - Reviewed backend AD login flow: pre-candidate binds, admin bind+search, DN bind.
 - Added backend npm script `test:ldap` to run LDAP bind test quickly.
@@ -314,3 +318,20 @@
 - Normalized LDAP login to resolve canonical DN and mail even for DOMAIN\\sam binds.
 - Matched users by email or ldap_dn to reuse existing records and update last_login.
 - Verified login now maps to existing widji.santoso row and keeps canonical DN.
+## 2026-01-15 15:27:19 UTC
+- Implemented hold-to-reveal password behavior on eye icons (UnlockScreen, AddEntryDialog, PasswordEntry).
+- Verified clipboard auto-clear for copied passwords (30s) via copyToClipboard.
+ - Logged copy events to audit and added user feedback toasts; ran npm run lint and npx tsc --noEmit.
+
+## 2026-01-15 15:30:23 UTC
+- Verified audit logging coverage for entry/folder CRUD, export (CSV/JSON), and KeePass import.
+- Confirmed ActivityView icon/label mappings for new actions and API action normalization.
+- Ran npm run lint (warnings only, no errors) and npx tsc --noEmit (passed).
+
+## 2026-01-15 15:41:19 UTC
+- Integrated Audit & Compliance into the main dashboard with sidebar toggle.
+- Replaced /admin navigation with in-page panel for admins.
+- Added reporting metrics: total events, shares, copies, top copied credentials.
+- Enriched export/import audit details with filename and scope; added export.kdbx logging.
+- Updated ActivityView labels/icons to include export.kdbx.
+- Executed npm run lint and npx tsc --noEmit; both succeeded (warnings only).
