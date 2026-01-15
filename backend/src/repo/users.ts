@@ -3,17 +3,31 @@ import { uid } from "../state/store.js";
 
 export const ensureUser = async (displayName: string, email?: string, ldap_dn?: string) => {
   const pool = await getPool();
-  const existing = await pool
-    .request()
-    .input("email", email || null)
-    .query("SELECT TOP 1 * FROM dbo.users WHERE email = @email");
-  if (existing.recordset.length) {
-    const u = existing.recordset[0];
+  let existingId: string | null = null;
+  if (email && email.length > 0) {
+    const byEmail = await pool
+      .request()
+      .input("email", email)
+      .query("SELECT TOP 1 id, email, display_name, ldap_dn FROM dbo.users WHERE email = @email");
+    if (byEmail.recordset.length) existingId = String(byEmail.recordset[0].id);
+  }
+  if (!existingId && ldap_dn && ldap_dn.length > 0) {
+    const byDn = await pool
+      .request()
+      .input("ldap_dn", ldap_dn)
+      .query("SELECT TOP 1 id, email, display_name, ldap_dn FROM dbo.users WHERE ldap_dn = @ldap_dn");
+    if (byDn.recordset.length) existingId = String(byDn.recordset[0].id);
+  }
+  if (existingId) {
     await pool
       .request()
-      .input("id", u.id)
-      .query("UPDATE dbo.users SET last_login_at = SYSUTCDATETIME() WHERE id = @id");
-    return u.id as string;
+      .input("id", existingId)
+      .input("email", email || null)
+      .input("ldap_dn", ldap_dn || null)
+      .query(
+        "UPDATE dbo.users SET last_login_at = SYSUTCDATETIME(), email = COALESCE(@email, email), ldap_dn = COALESCE(@ldap_dn, ldap_dn) WHERE id = @id"
+      );
+    return existingId;
   }
   const id = uid();
   await pool

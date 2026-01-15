@@ -8,8 +8,10 @@ import { shareRoutes } from "./routes/shares.js";
 import { syncRoutes } from "./routes/sync.js";
 import { meRoutes } from "./routes/me.js";
 import { adminRoutes } from "./routes/admin.js";
+import { healthRoutes } from "./routes/health.js";
 
 export const registerRoutes = async (app: FastifyInstance) => {
+  await app.register(healthRoutes, { prefix: "/health" });
   await app.register(authRoutes, { prefix: "/auth" });
   await app.register(keysRoutes, { prefix: "/keys" });
   await app.register(vaultRoutes, { prefix: "/vaults" });

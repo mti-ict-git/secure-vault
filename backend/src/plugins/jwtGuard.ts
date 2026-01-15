@@ -11,7 +11,7 @@ declare module "fastify" {
 export const installJwtGuard = (app: FastifyInstance) => {
   app.addHook("preHandler", async (req, reply) => {
     if (req.method === "OPTIONS") return;
-    const openPaths = ["/health", "/health/db", "/auth/ldap/login", "/sync/events"];
+    const openPaths = ["/health", "/health/db", "/health/ldap", "/auth/ldap/login", "/sync/events"];
     const path = (req.url || "").split("?")[0];
     if (openPaths.includes(path)) return;
 

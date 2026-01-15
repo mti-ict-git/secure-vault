@@ -1,3 +1,9 @@
+import dotenv from "dotenv";
+import { join } from "path";
+
+dotenv.config({ path: join(process.cwd(), ".env") });
+dotenv.config({ path: join(process.cwd(), "..", ".env") });
+
 type FetchJsonResult = { status: number; ok: boolean; body: unknown };
 
 const fetchJson = async (url: string, init?: RequestInit): Promise<FetchJsonResult> => {
@@ -29,13 +35,19 @@ const getLoginError = (v: unknown): string => {
 };
 
 const run = async () => {
-  const health = await fetchJson("http://localhost:8082/health");
+  const port = Number(process.env.BACKEND_PORT || process.env.PORT || 8084);
+  const base = `http://localhost:${Number.isFinite(port) ? port : 8084}`;
+
+  const health = await fetchJson(`${base}/health`);
   console.log("health", health.status, health.body);
   if (!health.ok) throw new Error("backend health failed");
 
+  const ldapHealth = await fetchJson(`${base}/health/ldap`);
+  console.log("health.ldap", ldapHealth.status, ldapHealth.body);
+
   const username = process.env.SV_TEST_USERNAME || "demo";
   const password = process.env.SV_TEST_PASSWORD || "demo";
-  const loginRes = await fetchJson("http://localhost:8082/auth/ldap/login", {
+  const loginRes = await fetchJson(`${base}/auth/ldap/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
@@ -48,17 +60,17 @@ const run = async () => {
   const login = loginRes.body;
   if (!isLoginOk(login)) throw new Error("login token missing");
 
-  const me = await fetchJson("http://localhost:8082/me", {
+  const me = await fetchJson(`${base}/me`, {
     headers: { Authorization: `Bearer ${login.token}` },
   });
   console.log("me", me.status, me.body);
 
-  const keys = await fetchJson("http://localhost:8082/keys/me", {
+  const keys = await fetchJson(`${base}/keys/me`, {
     headers: { Authorization: `Bearer ${login.token}` },
   });
   console.log("keys", keys.status, keys.body);
   if (!keys.ok) throw new Error("keys failed");
-  const vaults = await fetchJson("http://localhost:8082/vaults", {
+  const vaults = await fetchJson(`${base}/vaults`, {
     headers: { Authorization: `Bearer ${login.token}` },
   });
   console.log("vaults", vaults.status, vaults.body);

@@ -9,7 +9,9 @@
     "start": "node dist/index.js",
     "migrate": "tsx scripts/migrate.ts",
     "migrate:blobs:to-db": "tsx scripts/migrate-blobs-to-db.ts",
-    "test:api": "tsx scripts/test-api.ts"
+    "test:api": "tsx scripts/test-api.ts",
+    "test:ldap": "tsx scripts/test-ldap-bind.ts"
+    ,"print:users": "tsx scripts/print-users.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

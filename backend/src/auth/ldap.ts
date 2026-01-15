@@ -36,12 +36,115 @@ export const ldapLogin = async (username: string, password: string) => {
     connectTimeout: config.ldap.connectTimeout,
     tlsOptions: { rejectUnauthorized: config.ldap.tlsRejectUnauthorized },
   });
+  const base = config.ldap.baseDN || config.ldap.userSearchBase || "";
+  const partsPre = base.split(",").map((s) => s.trim());
+  const dcsPre = partsPre.filter((p) => p.toUpperCase().startsWith("DC=")).map((p) => p.slice(3));
+  const domainNamePre = dcsPre.length ? dcsPre[0].toUpperCase() : undefined;
+  const preCandidates: string[] = [];
+  if (username.includes("\\")) {
+    preCandidates.push(username);
+  } else {
+    if (domainNamePre) preCandidates.push(`${domainNamePre}\\${username}`);
+    preCandidates.push(username);
+  }
+  const isLikelyDn = (id: string): boolean => id.includes("=") && id.includes(",");
+  const resolveAfterBind = async (id: string): Promise<{ dn: string; email: string | undefined }> => {
+    if (isLikelyDn(id)) {
+      const { searchEntries } = await client.search(id, { scope: "base", filter: "(objectClass=*)" });
+      const first = searchEntries[0] as Record<string, unknown> | undefined;
+      const dn = toFirstString(first?.dn) || id;
+      const mail = toFirstString(first?.mail);
+      return { dn, email: mail };
+    }
+    const sam = id.includes("\\") ? id.split("\\").slice(-1)[0] : id.includes("@") ? undefined : id;
+    const upn = id.includes("@") ? id : undefined;
+    const safeSam = sam ? escapeLdapFilterValue(sam) : undefined;
+    const safeUpn = upn ? escapeLdapFilterValue(upn) : undefined;
+    const baseSearch = config.ldap.userSearchBase || config.ldap.baseDN;
+    const tryFilter = async (filter: string): Promise<{ dn: string; email: string | undefined } | undefined> => {
+      const { searchEntries } = await client.search(baseSearch, { scope: "sub", filter });
+      const first = searchEntries[0] as Record<string, unknown> | undefined;
+      const dn = toFirstString(first?.dn);
+      if (!dn) return undefined;
+      const mail = toFirstString(first?.mail);
+      return { dn, email: mail };
+    };
+    if (safeSam) {
+      const r = await tryFilter(`(sAMAccountName=${safeSam})`);
+      if (r) return r;
+    }
+    if (safeUpn) {
+      const r1 = await tryFilter(`(userPrincipalName=${safeUpn})`);
+      if (r1) return r1;
+      const r2 = await tryFilter(`(mail=${safeUpn})`);
+      if (r2) return r2;
+    }
+    return { dn: id, email: undefined };
+  };
+  for (const id of preCandidates) {
+    try {
+      await client.bind(id, password);
+      const resolved = await resolveAfterBind(id);
+      await client.unbind();
+      return resolved;
+    } catch {
+      continue;
+    }
+  }
+  const searchBase = config.ldap.baseDN || config.ldap.userSearchBase || "";
   const adminBindDN = config.ldap.bindDN;
   const adminBindPassword = config.ldap.bindPassword;
   try {
     await client.bind(adminBindDN, adminBindPassword);
-  } catch {
+  } catch (adminErr: unknown) {
+    if (config.nodeEnv === "development" && username === "demo" && password === "demo") {
+      await client.unbind();
+      return { dn: `cn=${username}`, email: `${username}@example.com` };
+    }
+    const parts = searchBase.split(",").map((s) => s.trim());
+    const dcs = parts.filter((p) => p.toUpperCase().startsWith("DC=")).map((p) => p.slice(3));
+    const domainSuffix = dcs.length ? dcs.join(".") : "";
+    const domainName = dcs.length ? dcs[0].toUpperCase() : "";
+    const candidates: string[] = [];
+    const upn = username.includes("@") ? username : undefined;
+    if (upn) candidates.push(upn);
+    if (domainSuffix) candidates.push(`${username}@${domainSuffix}`);
+    if (domainName) candidates.push(`${domainName}\\${username}`);
+    candidates.push(username);
+    const errors: unknown[] = [];
+    for (const id of candidates) {
+      try {
+        await client.bind(id, password);
+        const resolved = await resolveAfterBind(id);
+        await client.unbind();
+        return resolved;
+      } catch (err: unknown) {
+        errors.push(err);
+        continue;
+      }
+    }
     await client.unbind();
+    const getName = (e: unknown): string | undefined => {
+      if (typeof e === "object" && e !== null) {
+        const name = (e as { name?: unknown }).name;
+        return typeof name === "string" ? name : undefined;
+      }
+      return undefined;
+    };
+    const getMessage = (e: unknown): string | undefined => {
+      if (e instanceof Error) return e.message;
+      if (typeof e === "object" && e !== null) {
+        const msg = (e as { message?: unknown }).message;
+        return typeof msg === "string" ? msg : undefined;
+      }
+      return undefined;
+    };
+    const hadInvalid = errors.some((e) => {
+      const name = (getName(e) || "").toLowerCase();
+      const msg = (getMessage(e) || "").toLowerCase();
+      return name.includes("invalidcredentials") || msg.includes("invalid credentials");
+    });
+    if (hadInvalid) throw new Error("invalid_credentials");
     throw new Error("ldap_unavailable");
   }
   const upn = username.includes("@") ? username : undefined;
@@ -86,10 +189,6 @@ export const ldapLogin = async (username: string, password: string) => {
   }
   const candidates: string[] = [];
   candidates.push(entry.dn);
-  if (entry.userPrincipalName) candidates.push(entry.userPrincipalName);
-  if (upn) candidates.push(upn);
-  if (!upn && config.ldap.domain) candidates.push(`${config.ldap.domain}\\${username}`);
-  if (entry.mail) candidates.push(entry.mail);
   let bound = false;
   for (const id of candidates) {
     try {

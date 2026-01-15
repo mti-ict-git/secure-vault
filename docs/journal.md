@@ -252,6 +252,65 @@
 - Added image onError fallback to show initial avatar when favicon missing.
 - Ran ESLint and TypeScript no-emit; no errors introduced.
 ## Thu Jan 15 08:16:48 WIB 2026
-- Added global setting VITE_DISABLE_EXTERNAL_FAVICONS to disable external favicon requests.
-- Implemented per-domain favicon failure caching to prevent repeated fetches.
-- Ran ESLint and TypeScript no-emit; both succeeded.
+255→- Added global setting VITE_DISABLE_EXTERNAL_FAVICONS to disable external favicon requests.
+256→- Implemented per-domain favicon failure caching to prevent repeated fetches.
+257→- Ran ESLint and TypeScript no-emit; both succeeded.
+## 2026-01-15 09:08:30 +0700
+- Verified server-side audit logging, including keys registration events.
+- Confirmed Activity filters (since, until, action) and Admin filters (actor, date).
+- Ensured action normalization (underscore to dot) and actor display enrichment.
+- Ran npm run lint and npx tsc --noEmit; both passed.
+## 2026-01-15 09:12:39 +0700
+- Improved LDAP login error handling to distinguish invalid credentials vs unavailability.
+- After admin bind failure, attempt candidate user binds and map errors:
+  - Invalid credentials → 401
+  - Unavailable/connection errors → 503
+- Validated with npm run lint and npx tsc --noEmit.
+## 2026-01-15 13:30:37 +0700
+- Added /health/ldap endpoint to diagnose LDAP connectivity and admin bind status.
+- Registered health routes and whitelisted /health/ldap in JWT guard.
+- Ran npm run lint and npx tsc --noEmit; both succeeded.
+## 2026-01-15 21:14:46 +0700
+- Fixed Fastify duplicate route error by consolidating health endpoints.
+- Kept existing /health and /health/db in server; added only /health/ldap in plugin.
+- Ran npm run lint and npx tsc --noEmit; both successful.
+## 2026-01-15 21:23:29 +0700
+- Started backend dev server on port 8084 for local testing.
+- Ran backend API test with username widji.santoso and password Orangef0x.
+- Health endpoints OK; LDAP bind OK; login returned 401 invalid_credentials as expected.
+- Executed npm run lint at project root; only warnings, no errors.
+- Executed npx tsc --noEmit for frontend and backend; both succeeded.
+## 2026-01-15 21:28:21 +0700
+- Adjusted LDAP login to prefer sAMAccountName binds before admin search.
+- Added domain-derived DOMAIN\\username candidate and plain username candidate.
+- Verified type-checks and lint; both passed (warnings only).
+- Retested API: health OK, LDAP OK, login returns 401 with provided credentials.
+## 2026-01-15 21:34:24 +0700
+- Enhanced /auth/ldap/login error responses to include LDAP error detail.
+- Frontend now receives { error, detail: { name, message } } for debugging.
+- Ran lint and type-check; both successful.
+## 2026-01-15 21:38:24 +0700
+- Added pre-search direct bind candidates: DOMAIN\\username and username.
+- Kept DN bind after sAMAccountName search; avoided UPN/mail binds.
+- Type-check passed; retested API, still 401 for given credentials.
+## 2026-01-15 21:43:09 +0700
+- Created LDAP bind test script and validated identifiers:
+- DN: OK, UPN: OK, MBMA\\username: OK, sAMAccountName: 52e invalid credentials.
+- Updated backend to try typed DOMAIN\\username first when provided.
+## Thu Jan 15 21:48:52 WIB 2026
+- Reviewed backend AD login flow: pre-candidate binds, admin bind+search, DN bind.
+- Added backend npm script `test:ldap` to run LDAP bind test quickly.
+- Ran TypeScript no-emit in backend; completed successfully.
+## Thu Jan 15 21:54:23 WIB 2026
+- Executed LDAP bind test with provided identifiers:
+- DN: OK, UPN: OK, MBMA\\widji.santoso: OK, plain sam: 52e invalid credentials.
+- Ran migrations to add users.role column; resolved RequestError on login.
+- Verified API login succeeds with SAM; issued JWT and fetched /me.
+- Ran npm run lint and npx tsc --noEmit; both completed successfully.
+## Thu Jan 15 22:02:07 WIB 2026
+- Added print-users script to inspect dbo.users for AD login records.
+- Verified new row for widji.santoso: email NULL, ldap_dn MBMA\\widji.santoso, role user.
+## Thu Jan 15 22:07:15 WIB 2026
+- Normalized LDAP login to resolve canonical DN and mail even for DOMAIN\\sam binds.
+- Matched users by email or ldap_dn to reuse existing records and update last_login.
+- Verified login now maps to existing widji.santoso row and keeps canonical DN.

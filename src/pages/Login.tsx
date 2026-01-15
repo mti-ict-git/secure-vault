@@ -127,6 +127,9 @@ const Login = () => {
                   autoComplete="username"
                   autoFocus
                 />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Tip: If sign-in fails, try MBMA\\username or username@mbma.com
+                </p>
               </div>
             </div>
 
