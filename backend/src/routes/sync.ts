@@ -7,7 +7,10 @@ import { canUserAccessVault } from "../repo/vaults.js";
 import { isTeamMember } from "../repo/teams.js";
 
 export const syncRoutes = async (app: FastifyInstance) => {
-  app.get("/events", async (req, reply) => {
+  app.get(
+    "/events",
+    { config: { rateLimit: false } },
+    async (req, reply) => {
     type Query = { token?: string };
     const token = (req.query as Query | undefined)?.token;
     if (!token) return reply.status(401).send({ error: "unauthorized" });
@@ -55,5 +58,6 @@ export const syncRoutes = async (app: FastifyInstance) => {
       stop();
       reply.raw.end();
     });
-  });
+    }
+  );
 };

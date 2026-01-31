@@ -293,7 +293,7 @@ export function VaultSidebar({
           onClick={handleSelectPersonal}
           className={cn(
             'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-            !selectedFolder && !showFavorites && !selectedTeam
+            !selectedFolder && !showFavorites && !selectedTeam && !showSecurity
               ? 'bg-primary/10 text-primary'
               : 'text-muted-foreground hover:bg-accent hover:text-foreground'
           )}
@@ -500,6 +500,7 @@ export function VaultSidebar({
                         onSelectTeam(team.id);
                         onSelectFolder(null);
                         if (showFavorites) onToggleFavorites();
+                        if (showSecurity) onToggleSecurity();
                         if (showAdminAudit && onToggleAdminAudit) onToggleAdminAudit();
                       }}
                       className={cn(

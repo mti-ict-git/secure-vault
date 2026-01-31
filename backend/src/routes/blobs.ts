@@ -16,7 +16,10 @@ export const blobRoutes = async (app: FastifyInstance) => {
       fileSize: config.uploads.maxSize,
     },
   });
-  app.post("/:id/blobs", async (req, reply) => {
+  app.post(
+    ":id/blobs",
+    { config: { rateLimit: false } },
+    async (req, reply) => {
     type Params = { id: string };
     type Meta = {
       blob_type?: "snapshot" | "delta" | "attachment" | "kdbx";
@@ -89,7 +92,8 @@ export const blobRoutes = async (app: FastifyInstance) => {
     await writeAudit(userId, "blob_upload", "vault", vaultId, { blob_id: id, blob_type: effectiveBlobType });
     publishSyncEvent({ t: Date.now(), type: "blob_upload", vault_id: vaultId, actor_user_id: userId });
     return reply.status(201).send({ id });
-  });
+    }
+  );
   app.get("/:id/blobs", async (req, reply) => {
     type ListParams = { id: string };
     const vaultId = (req.params as ListParams).id;
