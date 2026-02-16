@@ -42,6 +42,11 @@ export const config = {
   rateLimit: {
     windowMs: toNumber(process.env.RATE_LIMIT_WINDOW_MS, 900000),
     max: toNumber(process.env.RATE_LIMIT_MAX_REQUESTS, 100),
+    allowPrivate: toBool(process.env.RATE_LIMIT_ALLOW_PRIVATE, (process.env.NODE_ENV || "development") !== "production"),
+    allowIps: (process.env.RATE_LIMIT_ALLOWLIST_IPS || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
   },
   jwt: {
     secret: process.env.JWT_SECRET || "dev-secret",

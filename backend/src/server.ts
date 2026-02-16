@@ -68,9 +68,29 @@ await server.register(cors, {
   },
   credentials: true,
 });
+const isPrivateIp = (ip: string): boolean => {
+  const v = (ip || "").toLowerCase();
+  if (v === "127.0.0.1" || v === "::1") return true;
+  if (v.startsWith("::ffff:")) {
+    const ipv4 = v.slice(7);
+    return ipv4.startsWith("127.") || ipv4.startsWith("10.") || ipv4.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[0-1])\./u.test(ipv4);
+  }
+  if (v.startsWith("10.")) return true;
+  if (v.startsWith("192.168.")) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./u.test(v)) return true;
+  if (v.startsWith("fc") || v.startsWith("fd")) return true;
+  return false;
+};
+
 await server.register(rateLimit, {
   timeWindow: config.rateLimit.windowMs,
   max: config.rateLimit.max,
+  allowList: async (req) => {
+    const ip = req.ip || "";
+    if (config.rateLimit.allowPrivate && isPrivateIp(ip)) return true;
+    if (config.rateLimit.allowIps && config.rateLimit.allowIps.includes(ip)) return true;
+    return false;
+  },
 });
 
 await server.route({

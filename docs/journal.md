@@ -369,3 +369,7 @@
 - Login 429 mitigation: disable rate limiting for /auth/ldap/login in non-production; increase /me per-route limit in non-production.
 - Root cause: global @fastify/rate-limit (max 100 / 15m) hit during dev bursts caused 429 on /api/me and /api/auth/ldap/login.
 
+
+## 2026-02-16 19:04:00 +08:00
+- Add rate-limit allowlist: detect private/loopback IPs and skip limits when RATE_LIMIT_ALLOW_PRIVATE=1; support explicit RATE_LIMIT_ALLOWLIST_IPS for additional IPs.
+
