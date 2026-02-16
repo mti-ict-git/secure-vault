@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { listAudits, listAuditsFiltered } from "../repo/audit.js";
 import { writeAudit } from "../repo/audit.js";
-import { getPublicKeysByUserId, getUserByEmail, getUserById, setThemePreference } from "../repo/users.js";
+import { getPublicKeysByUserId, getUserByEmail, getUserById, searchUsers, setThemePreference } from "../repo/users.js";
 import { ThemeUpdateSchema } from "../utils/validators.js";
 
 export const meRoutes = async (app: FastifyInstance) => {
@@ -56,5 +56,16 @@ export const meRoutes = async (app: FastifyInstance) => {
     const u = await getUserByEmail(email);
     if (!u) return reply.status(404).send({ error: "not_found" });
     return reply.send(u);
+  });
+
+  app.get("/users/search", async (req, reply) => {
+    const userId = req.user?.id;
+    if (!userId) return reply.status(401).send({ error: "unauthorized" });
+    type Query = { q?: string };
+    const q = (req.query as Query | undefined)?.q || "";
+    const term = q.trim();
+    if (term.length < 2) return reply.send({ items: [] });
+    const items = await searchUsers(term);
+    return reply.send({ items });
   });
 };

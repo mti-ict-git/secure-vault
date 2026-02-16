@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Users,
   Mail,
@@ -38,6 +38,8 @@ import {
 import { Team, TeamMember, TeamInvite } from '@/types/vault';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { get } from '@/lib/api';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 interface TeamMembersDialogProps {
   open: boolean;
@@ -73,6 +75,64 @@ export function TeamMembersDialog({
 }: TeamMembersDialogProps) {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'admin' | 'editor' | 'viewer'>('viewer');
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupName, setLookupName] = useState<string | null>(null);
+  const [lookupFound, setLookupFound] = useState<boolean>(false);
+  const [suggestions, setSuggestions] = useState<Array<{ id: string; email: string; display_name?: string }>>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  useEffect(() => {
+    const v = inviteEmail.trim();
+    const isEmail = /.+@.+\..+/.test(v);
+    if (!v) {
+      setLookupLoading(false);
+      setLookupFound(false);
+      setLookupName(null);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        if (cancelled) return;
+        if (isEmail) {
+          setLookupLoading(true);
+          setLookupFound(false);
+          setLookupName(null);
+          const r = await get<{ id?: string; display_name?: string; email?: string }>(`/users/lookup?email=${encodeURIComponent(v)}`);
+          if (cancelled) return;
+          setLookupLoading(false);
+          if (r.ok && (r.body as { id?: string }).id) {
+            const b = r.body as { display_name?: string; email?: string };
+            setLookupFound(true);
+            setLookupName(b.display_name || b.email || v);
+          } else {
+            setLookupFound(false);
+            setLookupName(null);
+          }
+          setSuggestions([]);
+          setShowSuggestions(false);
+        } else {
+          const r = await get<{ items: Array<{ id: string; email: string; display_name?: string }> }>(`/users/search?q=${encodeURIComponent(v)}`);
+          if (cancelled) return;
+          const items = r.ok && Array.isArray((r.body as { items?: unknown }).items)
+            ? (r.body as { items: Array<{ id: string; email: string; display_name?: string }> }).items
+            : [];
+          setSuggestions(items);
+          setShowSuggestions(items.length > 0);
+          setLookupLoading(false);
+          setLookupFound(false);
+          setLookupName(null);
+        }
+      })();
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      setLookupLoading(false);
+    };
+  }, [inviteEmail]);
 
   const handleInvite = () => {
     if (!inviteEmail.trim() || !inviteEmail.includes('@')) {
@@ -89,6 +149,11 @@ export function TeamMembersDialog({
     // Check if already invited
     if (invites.some(i => i.email.toLowerCase() === inviteEmail.toLowerCase())) {
       toast.error('This person has already been invited');
+      return;
+    }
+
+    if (!lookupFound) {
+      toast.error('User not found');
       return;
     }
 
@@ -128,15 +193,52 @@ export function TeamMembersDialog({
           {/* Invite new member */}
           <div className="space-y-3">
             <label className="text-sm font-medium text-foreground">Invite New Member</label>
-            <div className="flex gap-2">
-              <Input
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="email@example.com"
-                icon={<Mail className="w-4 h-4" />}
-                className="flex-1"
-                onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
-              />
+            <div className="flex gap-2 relative">
+              <div className="flex-1">
+                <Input
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="Search name or type email"
+                  icon={<Mail className="w-4 h-4" />}
+                  className="w-full"
+                  onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
+                />
+                {showSuggestions && (
+                  <div className="absolute z-20 mt-1 w-full rounded-md border bg-popover shadow">
+                    <Command className="max-h-64">
+                      <CommandInput placeholder="Search users..." value={inviteEmail} onValueChange={setInviteEmail} />
+                      <CommandList>
+                        <CommandEmpty>No users found.</CommandEmpty>
+                        <CommandGroup heading="Users">
+                          {suggestions.map((u) => (
+                            <CommandItem
+                              key={u.id}
+                              value={u.email}
+                              onSelect={() => {
+                                setInviteEmail(u.email);
+                                setLookupFound(true);
+                                setLookupName(u.display_name || u.email);
+                                setSuggestions([]);
+                                setShowSuggestions(false);
+                              }}
+                            >
+                              <div className="flex items-center gap-3 py-1">
+                                <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center">
+                                  <span className="text-xs font-medium">{(u.display_name || u.email).charAt(0).toUpperCase()}</span>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-sm text-foreground">{u.display_name || u.email}</span>
+                                  <span className="text-xs text-muted-foreground">{u.email}</span>
+                                </div>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </div>
+                )}
+              </div>
               <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as 'admin' | 'editor' | 'viewer')}>
                 <SelectTrigger className="w-28">
                   <SelectValue />
@@ -147,9 +249,12 @@ export function TeamMembersDialog({
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={handleInvite}>
+              <Button onClick={handleInvite} disabled={!lookupFound || lookupLoading}>
                 <UserPlus className="w-4 h-4" />
               </Button>
+            </div>
+            <div className="min-h-5 text-xs text-muted-foreground">
+              {lookupLoading ? 'Checking user…' : lookupFound ? `Found: ${lookupName ?? ''}` : inviteEmail.trim() && inviteEmail.includes('@') ? 'User not found' : ''}
             </div>
           </div>
 

@@ -109,6 +109,17 @@ export const getUserByEmail = async (email: string) => {
   return r.recordset[0] || null;
 };
 
+export const searchUsers = async (q: string) => {
+  const pool = await getPool();
+  const r = await pool
+    .request()
+    .input("q", `%${q}%`)
+    .query(
+      "SELECT TOP 10 id, display_name, email FROM dbo.users WHERE (email LIKE @q OR display_name LIKE @q) ORDER BY display_name ASC"
+    );
+  return r.recordset as Array<{ id: string; display_name?: string | null; email?: string | null }>;
+};
+
 export const getPublicKeysByUserId = async (userId: string) => {
   const pool = await getPool();
   const r = await pool

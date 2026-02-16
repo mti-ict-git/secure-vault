@@ -348,3 +348,13 @@
 - Fix CORS for SSE by echoing allowed Origin on /sync/events before flushHeaders.
 - Ensure localhost:8080 is allowed in dev via config.corsOrigins.
 
+
+## 2026-02-16 17:08:17 +08:00
+- Add live user lookup in TeamMembersDialog: validate email, query /users/lookup, show found/not-found, and disable invite until a user exists.
+
+
+## 2026-02-16 17:14:05 +08:00
+- Add /users/search API and MSSQL repo function; return top 10 matches by email/display_name.
+- Implement searchable dropdown in TeamMembersDialog using Command; debounced search; selecting fills email and enables invite.
+- Fix 'Checking user' stuck state with proper effect cleanup and debounce.
+
