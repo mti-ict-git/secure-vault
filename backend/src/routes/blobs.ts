@@ -17,7 +17,7 @@ export const blobRoutes = async (app: FastifyInstance) => {
     },
   });
   app.post(
-    ":id/blobs",
+    "/:id/blobs",
     { config: { rateLimit: false } },
     async (req, reply) => {
     type Params = { id: string };
