@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { Search, Plus, Filter, SortAsc, Users, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X, ListChecks, RefreshCw, Share2, Activity } from 'lucide-react';
+import { Search, Plus, Filter, SortAsc, Users, UserPlus, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X, ListChecks, RefreshCw, Share2, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { VaultSidebar } from '@/components/VaultSidebar';
@@ -45,7 +45,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { get, post } from '@/lib/api';
+import { get, post, postForm } from '@/lib/api';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { encryptVaultSnapshot, serializeEncryptedSnapshot, type VaultSnapshotV1 } from '@/lib/crypto/vault';
+import { sealToRecipient } from '@/lib/crypto/box';
 
 type FolderOption = { id: string; name: string; depth: number };
 
@@ -329,6 +332,11 @@ export function VaultDashboard({
   const [bulkMoveFolderId, setBulkMoveFolderId] = useState<string | null>(null);
   const [bulkCopyOpen, setBulkCopyOpen] = useState(false);
   const [bulkCopyTeamId, setBulkCopyTeamId] = useState<string | null>(null);
+  const [bulkCopyUserOpen, setBulkCopyUserOpen] = useState(false);
+  const [bulkCopyUserSearch, setBulkCopyUserSearch] = useState('');
+  const [bulkCopyUserSelected, setBulkCopyUserSelected] = useState<{ id: string; email: string; display_name?: string } | null>(null);
+  const [bulkCopyUserSuggestions, setBulkCopyUserSuggestions] = useState<Array<{ id: string; email: string; display_name?: string }>>([]);
+  const [bulkCopyUserLoading, setBulkCopyUserLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareVaultId, setShareVaultId] = useState<string | null>(null);
   const [shareVaultKey, setShareVaultKey] = useState<Uint8Array | null>(null);
@@ -560,6 +568,110 @@ export function VaultDashboard({
     clearSelection();
     setBulkCopyOpen(false);
     setBulkCopyTeamId(null);
+  };
+
+  const handleBulkCopyToUser = async () => {
+    if (selectedCount === 0) return;
+    if (!bulkCopyUserSelected && !bulkCopyUserSearch.trim()) return;
+    const ensureUser = async (): Promise<{ id: string; email: string; display_name?: string } | null> => {
+      if (bulkCopyUserSelected) return bulkCopyUserSelected;
+      setBulkCopyUserLoading(true);
+      try {
+        const r = await get<{ id?: string; email?: string; display_name?: string }>(`/users/lookup?email=${encodeURIComponent(bulkCopyUserSearch.trim())}`);
+        if (!r.ok || !r.body?.id) {
+          toast.error('User not found');
+          return null;
+        }
+        return { id: r.body.id, email: r.body.email || bulkCopyUserSearch.trim(), display_name: r.body.display_name };
+      } finally {
+        setBulkCopyUserLoading(false);
+      }
+    };
+
+    const recipient = await ensureUser();
+    if (!recipient) return;
+
+    try {
+      setBulkCopyUserLoading(true);
+
+      const keysRes = await get<{ public_enc_key?: string | null }>(`/keys/me`);
+      const encPk = keysRes.body?.public_enc_key || null;
+      if (!keysRes.ok || !encPk) {
+        toast.error('Cannot create share: your encryption keys are not registered');
+        return;
+      }
+
+      const vaultKey = crypto.getRandomValues(new Uint8Array(32));
+      const wrappedForCreator = await sealToRecipient(encPk, vaultKey);
+      const createRes = await post<{ id?: string }>(`/vaults`, { kind: 'personal', version: 1, vault_key_wrapped: wrappedForCreator });
+      const newVaultId = createRes.body?.id || null;
+      if (!createRes.ok || !newVaultId) {
+        toast.error('Failed to create temporary vault for sharing');
+        return;
+      }
+
+      const snapshot: VaultSnapshotV1 = {
+        v: 1,
+        entries: selectedEntries.map((e) => ({
+          id: crypto.randomUUID(),
+          title: e.title,
+          username: e.username,
+          password: e.password,
+          url: e.url,
+          notes: e.notes,
+          folderId: undefined,
+          teamId: undefined,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          favorite: e.favorite,
+          createdBy: 'shared-copy',
+        })),
+        folders: [],
+      };
+
+      const encrypted = await encryptVaultSnapshot(vaultKey, snapshot);
+      const bytes = serializeEncryptedSnapshot(encrypted);
+      const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+      const hashArray = new Uint8Array(hashBuffer);
+      const hashHex = Array.from(hashArray).map((b) => b.toString(16).padStart(2, '0')).join('');
+      const form = new FormData();
+      form.append('meta', JSON.stringify({ blob_type: 'snapshot', content_sha256: hashHex, size_bytes: bytes.length }));
+      form.append('file', new Blob([buffer], { type: 'application/octet-stream' }));
+      const uploadRes = await postForm<{ id?: string; error?: string }>(`/vaults/${newVaultId}/blobs`, form);
+      if (!uploadRes.ok) {
+        toast.error('Failed to upload shared copy');
+        return;
+      }
+
+      const pkRes = await get<{ public_enc_key?: string | null }>(`/users/${recipient.id}/public-keys`);
+      const recipientPk = pkRes.body?.public_enc_key || null;
+      if (!pkRes.ok || !recipientPk) {
+        toast.error('Cannot share: recipient has no encryption keys');
+        return;
+      }
+      const wrappedForRecipient = await sealToRecipient(recipientPk, vaultKey);
+      const shareRes = await post<{ id?: string }>(`/shares`, {
+        source_vault_id: newVaultId,
+        target_user_id: recipient.id,
+        wrapped_key: wrappedForRecipient,
+        permissions: 'read',
+      });
+      if (!shareRes.ok || !shareRes.body?.id) {
+        toast.error('Failed to share copy with user');
+        return;
+      }
+
+      toast.success(`Shared copy of ${selectedCount} entr${selectedCount === 1 ? 'y' : 'ies'} with ${recipient.email}`);
+      void post('/audit/log', { action: 'entry_copy_to_user', resource_type: 'user', resource_id: recipient.id, details: { count: selectedCount } });
+      clearSelection();
+      setBulkCopyUserOpen(false);
+      setBulkCopyUserSearch('');
+      setBulkCopyUserSelected(null);
+      setBulkCopyUserSuggestions([]);
+    } finally {
+      setBulkCopyUserLoading(false);
+    }
   };
 
   const handleSaveEntry = (entryData: Omit<PasswordEntry, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -927,6 +1039,12 @@ export function VaultDashboard({
                           Copy to Team
                         </Button>
                       )}
+                      {!selectedTeam && (
+                        <Button variant="outline" size="sm" onClick={() => setBulkCopyUserOpen(true)}>
+                          <UserPlus className="w-4 h-4" />
+                          Copy to User
+                        </Button>
+                      )}
                       <Button variant="outline" size="sm" onClick={handleBulkToggleFavorites}>
                         <Star className="w-4 h-4" />
                         Toggle favorite
@@ -1189,6 +1307,70 @@ export function VaultDashboard({
             <Button variant="outline" onClick={() => setBulkCopyOpen(false)}>Cancel</Button>
             <Button onClick={handleBulkCopyToTeam} disabled={!bulkCopyTeamId}>
               Copy {selectedCount}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkCopyUserOpen} onOpenChange={(open) => {
+        setBulkCopyUserOpen(open);
+        if (!open) {
+          setBulkCopyUserSearch('');
+          setBulkCopyUserSelected(null);
+          setBulkCopyUserSuggestions([]);
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Copy Selected to User</DialogTitle>
+            <DialogDescription>Choose a user to duplicate the selected passwords into a new read-only shared vault for them.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <div className="relative">
+              <Input
+                value={bulkCopyUserSearch}
+                onChange={(e) => setBulkCopyUserSearch(e.target.value)}
+                placeholder="Search name or type email"
+                icon={<Search className="w-4 h-4" />}
+              />
+              {bulkCopyUserSearch.trim().length >= 2 && !/.+@.+\..+/.test(bulkCopyUserSearch.trim()) && (
+                <div className="absolute z-20 mt-1 w-full rounded-md border bg-popover shadow">
+                  <Command className="max-h-64">
+                    <CommandInput placeholder="Search users..." value={bulkCopyUserSearch} onValueChange={setBulkCopyUserSearch} />
+                    <CommandList>
+                      <CommandEmpty>No users found.</CommandEmpty>
+                      <CommandGroup heading="Users">
+                        {bulkCopyUserSuggestions.map((u) => (
+                          <CommandItem key={u.id} value={u.email} onSelect={() => {
+                            setBulkCopyUserSearch(u.email);
+                            setBulkCopyUserSelected(u);
+                            setBulkCopyUserSuggestions([]);
+                          }}>
+                            <div className="flex items-center gap-3 py-1">
+                              <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center">
+                                <span className="text-xs font-medium">{(u.display_name || u.email).charAt(0).toUpperCase()}</span>
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-sm text-foreground">{u.display_name || u.email}</span>
+                                <span className="text-xs text-muted-foreground">{u.email}</span>
+                              </div>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">Only the selected entries are copied. The recipient cannot modify the source.</p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkCopyUserOpen(false)}>Cancel</Button>
+            <Button onClick={() => void handleBulkCopyToUser()} disabled={bulkCopyUserLoading || (!bulkCopyUserSelected && !bulkCopyUserSearch.trim())}>
+              {bulkCopyUserLoading ? 'Sharing...' : `Copy ${selectedCount}`}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -71,6 +71,7 @@ const ACTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   'export.kdbx': Download,
   'import.kdbx': Upload,
   'entry.copy.to.team': Share2,
+  'entry.copy.to.user': Share2,
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -105,6 +106,7 @@ const ACTION_LABELS: Record<string, string> = {
   'export.kdbx': 'Exported KeePass (.kdbx)',
   'import.kdbx': 'Imported from KeePass',
   'entry.copy.to.team': 'Copied entries to team',
+  'entry.copy.to.user': 'Copied entries to user',
 };
 
 function formatRelativeTime(dateStr: string): string {

@@ -358,3 +358,14 @@
 - Implement searchable dropdown in TeamMembersDialog using Command; debounced search; selecting fills email and enables invite.
 - Fix 'Checking user' stuck state with proper effect cleanup and debounce.
 
+
+## 2026-02-16 17:23:35 +08:00
+- Implement 'Copy to User' feature: create a temporary personal vault, upload snapshot of selected entries, and share read-only to a chosen user.
+- Add searchable user picker to dialog using Command; supports name/email search via /users/search and lookup via /users/lookup.
+- Update ActivityView labels/icons for 'entry.copy.to.user'.
+
+
+## 2026-02-16 18:59:52 +08:00
+- Login 429 mitigation: disable rate limiting for /auth/ldap/login in non-production; increase /me per-route limit in non-production.
+- Root cause: global @fastify/rate-limit (max 100 / 15m) hit during dev bursts caused 429 on /api/me and /api/auth/ldap/login.
+

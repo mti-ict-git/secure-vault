@@ -2,10 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { listAudits, listAuditsFiltered } from "../repo/audit.js";
 import { writeAudit } from "../repo/audit.js";
 import { getPublicKeysByUserId, getUserByEmail, getUserById, searchUsers, setThemePreference } from "../repo/users.js";
+import { config } from "../config.js";
 import { ThemeUpdateSchema } from "../utils/validators.js";
 
 export const meRoutes = async (app: FastifyInstance) => {
-  app.get("/me", async (_req, reply) => {
+  const meRouteOpts = config.nodeEnv !== "production" ? { config: { rateLimit: { max: 1200, timeWindow: 60_000 } } } : {};
+  app.get("/me", meRouteOpts, async (_req, reply) => {
     const userId = _req.user?.id;
     if (!userId) return reply.status(401).send({ error: "unauthorized" });
     const u = await getUserById(userId);
@@ -13,7 +15,7 @@ export const meRoutes = async (app: FastifyInstance) => {
     return reply.send({ id: u.id, display_name: u.display_name, email: u.email, theme_preference: (u as { theme_preference?: string | null }).theme_preference, role: (u as { role?: string | null }).role });
   });
 
-  app.patch("/me", async (req, reply) => {
+  app.patch("/me", meRouteOpts, async (req, reply) => {
     const userId = req.user?.id;
     if (!userId) return reply.status(401).send({ error: "unauthorized" });
     const body = ThemeUpdateSchema.safeParse(req.body);

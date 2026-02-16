@@ -5,9 +5,11 @@ import { store, uid } from "../state/store.js";
 import { ldapLogin } from "../auth/ldap.js";
 import { ensureUser, createSession, getUserById } from "../repo/users.js";
 import { writeAudit } from "../repo/audit.js";
+import { config } from "../config.js";
 
 export const authRoutes = async (app: FastifyInstance) => {
-  app.post("/ldap/login", async (req, reply) => {
+  const loginRouteOpts = config.nodeEnv !== "production" ? { config: { rateLimit: false as const } } : {};
+  app.post("/ldap/login", loginRouteOpts, async (req, reply) => {
     try {
       const body = LoginSchema.parse(req.body);
       let id = uid();
