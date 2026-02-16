@@ -343,3 +343,8 @@
 - Enriched export/import audit details with filename and scope; added export.kdbx logging.
 - Updated ActivityView labels/icons to include export.kdbx.
 - Executed npm run lint and npx tsc --noEmit; both succeeded (warnings only).
+
+## 2026-02-16 16:59:55 +08:00
+- Fix CORS for SSE by echoing allowed Origin on /sync/events before flushHeaders.
+- Ensure localhost:8080 is allowed in dev via config.corsOrigins.
+

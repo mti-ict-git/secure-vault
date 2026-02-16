@@ -5,6 +5,7 @@ import type { SyncEvent } from "../state/store.js";
 import { isSessionValid } from "../repo/users.js";
 import { canUserAccessVault } from "../repo/vaults.js";
 import { isTeamMember } from "../repo/teams.js";
+import { config } from "../config.js";
 
 export const syncRoutes = async (app: FastifyInstance) => {
   app.get(
@@ -30,6 +31,38 @@ export const syncRoutes = async (app: FastifyInstance) => {
     }
     const valid = await isSessionValid(sid);
     if (!valid) return reply.status(401).send({ error: "session_revoked" });
+    const originHeader = (req.headers["origin"] || req.headers["Origin"]) as string | undefined;
+    const isAllowedOrigin = (o: string): boolean => {
+      if (config.corsOrigins.includes("*")) return true;
+      if (config.corsOrigins.includes(o)) return true;
+      try {
+        const ou = new URL(o);
+        const oHost = ou.hostname;
+        const oPort = ou.port;
+        const oHostPort = oPort ? `${oHost}:${oPort}` : oHost;
+        return config.corsOrigins.some((a) => {
+          if (!a) return false;
+          if (a === o) return true;
+          try {
+            const au = new URL(a);
+            const aHost = au.hostname;
+            const aPort = au.port;
+            const aHostPort = aPort ? `${aHost}:${aPort}` : aHost;
+            return aHostPort.toLowerCase() === oHostPort.toLowerCase() || aHost.toLowerCase() === oHost.toLowerCase();
+          } catch {
+            const al = a.toLowerCase().trim();
+            return al === oHostPort.toLowerCase() || al === oHost.toLowerCase();
+          }
+        });
+      } catch {
+        return false;
+      }
+    };
+    if (originHeader && isAllowedOrigin(originHeader)) {
+      reply.raw.setHeader("Access-Control-Allow-Origin", originHeader);
+      reply.raw.setHeader("Vary", "Origin");
+      reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
+    }
     reply.raw.setHeader("Content-Type", "text/event-stream");
     reply.raw.setHeader("Cache-Control", "no-cache");
     reply.raw.setHeader("Connection", "keep-alive");
