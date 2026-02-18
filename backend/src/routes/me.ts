@@ -1,9 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { listAudits, listAuditsFiltered } from "../repo/audit.js";
 import { writeAudit } from "../repo/audit.js";
-import { getPublicKeysByUserId, getUserByEmail, getUserById, searchUsers, setThemePreference } from "../repo/users.js";
+import { getPublicKeysByUserId, getUserByEmail, getUserById, searchUsers, setThemePreference, ensureUser } from "../repo/users.js";
 import { config } from "../config.js";
 import { ThemeUpdateSchema } from "../utils/validators.js";
+import { ldapFindByEmail, ldapSearchUsers } from "../auth/ldap.js";
 
 export const meRoutes = async (app: FastifyInstance) => {
   const meRouteOpts = config.nodeEnv !== "production" ? { config: { rateLimit: { max: 1200, timeWindow: 60_000 } } } : {};
@@ -56,8 +57,16 @@ export const meRoutes = async (app: FastifyInstance) => {
     const email = (req.query as Query | undefined)?.email;
     if (!email) return reply.status(400).send({ error: "email_required" });
     const u = await getUserByEmail(email);
-    if (!u) return reply.status(404).send({ error: "not_found" });
-    return reply.send(u);
+    if (u) return reply.send(u);
+    if (config.ldap.url) {
+      const d = await ldapFindByEmail(email);
+      if (d && d.email) {
+        const id = await ensureUser(d.displayName || d.email, d.email, d.dn);
+        const created = await getUserById(id);
+        if (created) return reply.send({ id: created.id, display_name: created.display_name, email: created.email });
+      }
+    }
+    return reply.status(404).send({ error: "not_found" });
   });
 
   app.get("/users/search", async (req, reply) => {
@@ -68,6 +77,14 @@ export const meRoutes = async (app: FastifyInstance) => {
     const term = q.trim();
     if (term.length < 2) return reply.send({ items: [] });
     const items = await searchUsers(term);
-    return reply.send({ items });
+    if (!config.ldap.url) return reply.send({ items });
+    const ldapItems = await ldapSearchUsers(term, 10);
+    const byEmail = new Set(items.map((i) => (i.email || "").toLowerCase()).filter(Boolean));
+    const merged = items.concat(
+      ldapItems
+        .filter((u) => !!u.email && !byEmail.has(u.email!.toLowerCase()))
+        .map((u) => ({ id: undefined, display_name: u.displayName || undefined, email: u.email || undefined }))
+    );
+    return reply.send({ items: merged });
   });
 };

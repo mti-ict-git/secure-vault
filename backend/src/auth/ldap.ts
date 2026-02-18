@@ -206,3 +206,63 @@ export const ldapLogin = async (username: string, password: string) => {
   await client.unbind();
   return { dn: entry.dn, email: entry.mail };
 };
+
+export type LdapUser = { dn: string; email?: string; displayName?: string; userPrincipalName?: string; sAMAccountName?: string };
+
+export const ldapSearchUsers = async (term: string, limit = 10): Promise<LdapUser[]> => {
+  if (!config.ldap.url || !config.ldap.bindDN || !config.ldap.bindPassword) return [];
+  const client = new Client({
+    url: config.ldap.url,
+    timeout: config.ldap.timeout,
+    connectTimeout: config.ldap.connectTimeout,
+    tlsOptions: { rejectUnauthorized: config.ldap.tlsRejectUnauthorized },
+  });
+  try {
+    await client.bind(config.ldap.bindDN, config.ldap.bindPassword);
+    const base = config.ldap.userSearchBase || config.ldap.baseDN;
+    const safe = escapeLdapFilterValue(term);
+    const filter = `(|(cn=*${safe}*)(mail=*${safe}*)(userPrincipalName=*${safe}*)(sAMAccountName=*${safe}*))`;
+    const { searchEntries } = await client.search(base, { scope: "sub", filter, sizeLimit: limit });
+    const items: LdapUser[] = (searchEntries as Array<Record<string, unknown>>).map((e) => ({
+      dn: toFirstString(e.dn) || "",
+      email: toFirstString((e as Record<string, unknown>).mail),
+      displayName: toFirstString((e as Record<string, unknown>).cn) || toFirstString((e as Record<string, unknown>).displayName),
+      userPrincipalName: toFirstString((e as Record<string, unknown>).userPrincipalName),
+      sAMAccountName: toFirstString((e as Record<string, unknown>).sAMAccountName),
+    })).filter((u) => !!u.dn);
+    await client.unbind();
+    return items;
+  } catch {
+    try { await client.unbind(); } catch { void 0; }
+    return [];
+  }
+};
+
+export const ldapFindByEmail = async (email: string): Promise<LdapUser | null> => {
+  if (!config.ldap.url || !config.ldap.bindDN || !config.ldap.bindPassword) return null;
+  const client = new Client({
+    url: config.ldap.url,
+    timeout: config.ldap.timeout,
+    connectTimeout: config.ldap.connectTimeout,
+    tlsOptions: { rejectUnauthorized: config.ldap.tlsRejectUnauthorized },
+  });
+  try {
+    await client.bind(config.ldap.bindDN, config.ldap.bindPassword);
+    const base = config.ldap.userSearchBase || config.ldap.baseDN;
+    const safe = escapeLdapFilterValue(email);
+    const { searchEntries } = await client.search(base, { scope: "sub", filter: `(mail=${safe})`, sizeLimit: 1 });
+    const e = (searchEntries[0] as Record<string, unknown> | undefined);
+    await client.unbind();
+    if (!e) return null;
+    return {
+      dn: toFirstString(e.dn) || "",
+      email: toFirstString(e.mail),
+      displayName: toFirstString((e as Record<string, unknown>).cn) || toFirstString((e as Record<string, unknown>).displayName),
+      userPrincipalName: toFirstString((e as Record<string, unknown>).userPrincipalName),
+      sAMAccountName: toFirstString((e as Record<string, unknown>).sAMAccountName),
+    };
+  } catch {
+    try { await client.unbind(); } catch { void 0; }
+    return null;
+  }
+};

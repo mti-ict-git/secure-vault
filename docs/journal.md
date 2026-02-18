@@ -373,3 +373,9 @@
 ## 2026-02-16 19:04:00 +08:00
 - Add rate-limit allowlist: detect private/loopback IPs and skip limits when RATE_LIMIT_ALLOW_PRIVATE=1; support explicit RATE_LIMIT_ALLOWLIST_IPS for additional IPs.
 
+
+## 2026-02-16 20:54:20 +08:00
+- Implement user search UX: debounce /users/search with suggestions in Copy to User dialog.
+- Backend: add LDAP-backed user search and lookup provisioning; /users/search now merges local + LDAP; /users/lookup provisions user from LDAP by email when missing.
+- Adjusted client logic to provision selected LDAP users automatically before sharing.
+

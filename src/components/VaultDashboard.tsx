@@ -45,7 +45,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { get, post, postForm } from '@/lib/api';
+import { get, post, postForm, request } from '@/lib/api';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { encryptVaultSnapshot, serializeEncryptedSnapshot, type VaultSnapshotV1 } from '@/lib/crypto/vault';
 import { sealToRecipient } from '@/lib/crypto/box';
@@ -341,6 +341,45 @@ export function VaultDashboard({
   const [shareVaultId, setShareVaultId] = useState<string | null>(null);
   const [shareVaultKey, setShareVaultKey] = useState<Uint8Array | null>(null);
   
+  useEffect(() => {
+    let active = true;
+    const q = bulkCopyUserSearch.trim();
+    if (q.length < 2) {
+      setBulkCopyUserSuggestions([]);
+      return;
+    }
+    const controller = new AbortController();
+    const run = async () => {
+      setBulkCopyUserLoading(true);
+      try {
+        const res = await request<{ items?: Array<{ id?: string; email?: string; display_name?: string }> }>(
+          `/users/search?q=${encodeURIComponent(q)}`,
+          { signal: controller.signal }
+        );
+        if (!active) return;
+        if (res.ok && (res.body as { items?: Array<{ id?: string; email?: string; display_name?: string }> }).items) {
+          const body = res.body as { items?: Array<{ id?: string; email?: string; display_name?: string }> };
+          const items = (body.items || [])
+            .map((u) => ({ id: (u.id as string | undefined) ?? undefined, email: u.email || '', display_name: u.display_name }))
+            .filter((u) => !!u.email) as Array<{ id: string; email: string; display_name?: string } | { id: undefined; email: string; display_name?: string }>;
+          setBulkCopyUserSuggestions(items as Array<{ id: string; email: string; display_name?: string }>);
+        } else {
+          setBulkCopyUserSuggestions([]);
+        }
+      } catch {
+        if (active) setBulkCopyUserSuggestions([]);
+      } finally {
+        if (active) setBulkCopyUserLoading(false);
+      }
+    };
+    const t = setTimeout(run, 250);
+    return () => {
+      active = false;
+      clearTimeout(t);
+      try { controller.abort(); } catch { void 0; }
+    };
+  }, [bulkCopyUserSearch]);
+
   // Team dialogs
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
   const [editTeam, setEditTeam] = useState<Team | null>(null);
@@ -574,15 +613,16 @@ export function VaultDashboard({
     if (selectedCount === 0) return;
     if (!bulkCopyUserSelected && !bulkCopyUserSearch.trim()) return;
     const ensureUser = async (): Promise<{ id: string; email: string; display_name?: string } | null> => {
-      if (bulkCopyUserSelected) return bulkCopyUserSelected;
+      if (bulkCopyUserSelected && (bulkCopyUserSelected as { id?: string | undefined }).id) return bulkCopyUserSelected as { id: string; email: string; display_name?: string };
       setBulkCopyUserLoading(true);
       try {
-        const r = await get<{ id?: string; email?: string; display_name?: string }>(`/users/lookup?email=${encodeURIComponent(bulkCopyUserSearch.trim())}`);
+        const emailGuess = (bulkCopyUserSelected?.email || bulkCopyUserSearch.trim());
+        const r = await get<{ id?: string; email?: string; display_name?: string }>(`/users/lookup?email=${encodeURIComponent(emailGuess)}`);
         if (!r.ok || !r.body?.id) {
           toast.error('User not found');
           return null;
         }
-        return { id: r.body.id, email: r.body.email || bulkCopyUserSearch.trim(), display_name: r.body.display_name };
+        return { id: r.body.id, email: r.body.email || emailGuess, display_name: r.body.display_name };
       } finally {
         setBulkCopyUserLoading(false);
       }
