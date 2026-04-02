@@ -11,13 +11,14 @@ import { useAuth } from "@/contexts/auth";
 import NotFound from "./pages/NotFound";
 import Admin from "./pages/Admin";
 import Settings from "./pages/Settings";
+import { NotificationsProvider } from "@/contexts/notifications";
 
 const queryClient = new QueryClient();
 
 const Protected = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAuth();
   if (!isAuthenticated) return <Login />;
-  return <>{children}</>;
+  return <NotificationsProvider>{children}</NotificationsProvider>;
 };
 
 const App = () => (

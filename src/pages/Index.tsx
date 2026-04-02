@@ -7,6 +7,7 @@ import { useTeams } from '@/hooks/useTeams';
 import { useSyncEvents } from '@/hooks/useSyncEvents';
 import { Loader2, Shield } from 'lucide-react';
 import { useAuth } from '@/contexts/auth';
+import { useNotifications } from '@/contexts/notifications';
 
 const Index = () => {
   const {
@@ -52,9 +53,11 @@ const Index = () => {
 
   const { user } = useAuth();
   const isAdmin = !!user && (user as { role?: 'user' | 'admin' }).role === 'admin';
+  const { pushSyncEvent } = useNotifications();
 
   useSyncEvents({
     enabled: !isLocked,
+    onEvent: pushSyncEvent,
     onVaultChange: () => { void refresh(); },
     onTeamChange: (teamId) => { void refreshTeams(); void refreshTeamMembers(teamId); },
   });

@@ -10,6 +10,7 @@ import { TeamMembersDialog } from '@/components/TeamMembersDialog';
 import { KdbxImportExportDialog } from '@/components/KdbxImportExportDialog';
 import { ShareVaultDialog } from '@/components/ShareVaultDialog';
 import { SecurityDashboard } from '@/components/SecurityDashboard';
+import { NotificationsBell } from '@/components/NotificationsBell';
 import { PasswordEntry, Folder, Team, TeamInvite } from '@/types/vault';
 import { downloadFile } from '@/lib/kdbx-utils';
 import type { KdbxImportedEntry, KdbxImportedFolder } from '@/lib/kdbx-utils';
@@ -813,6 +814,7 @@ export function VaultDashboard({
             </div>
             
           <div className="flex items-center gap-2">
+            <NotificationsBell />
             <Button variant="outline" size="icon" onClick={() => openKdbxDialog('import')} title="Import/Export KeePass">
               <FileKey className="w-4 h-4" />
             </Button>
