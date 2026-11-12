@@ -1,34 +1,43 @@
 import type { FastifyInstance } from "fastify";
-import { verifyJwt } from "../utils/jwt.js";
 import { subscribeSyncEvents } from "../state/store.js";
 import type { SyncEvent } from "../state/store.js";
 import { isSessionValid } from "../repo/users.js";
 import { canUserAccessVault } from "../repo/vaults.js";
 import { isTeamMember } from "../repo/teams.js";
 import { config } from "../config.js";
+import { randomBytes } from "crypto";
+
+// EventSource cannot send headers, so the stream is opened with a short-lived,
+// single-use ticket instead of the JWT itself (which would land in proxy logs).
+const TICKET_TTL_MS = 30_000;
+const tickets = new Map<string, { sub: string; sid: string; exp: number }>();
+const sweepTickets = () => {
+  const now = Date.now();
+  for (const [k, v] of tickets) if (v.exp < now) tickets.delete(k);
+};
 
 export const syncRoutes = async (app: FastifyInstance) => {
+  // Authenticated by the JWT guard (Authorization header).
+  app.post("/ticket", async (req, reply) => {
+    const user = req.user;
+    if (!user) return reply.status(401).send({ error: "unauthorized" });
+    sweepTickets();
+    const ticket = randomBytes(32).toString("base64url");
+    tickets.set(ticket, { sub: user.id, sid: user.sid, exp: Date.now() + TICKET_TTL_MS });
+    return reply.send({ ticket, expires_in: TICKET_TTL_MS / 1000 });
+  });
+
   app.get(
     "/events",
     { config: { rateLimit: false } },
     async (req, reply) => {
-    type Query = { token?: string };
-    const token = (req.query as Query | undefined)?.token;
-    if (!token) return reply.status(401).send({ error: "unauthorized" });
-    let sid: string;
-    let sub: string;
-    try {
-      const payload = verifyJwt(token);
-      const sidValue = payload.sid;
-      const subValue = payload.sub;
-      if (typeof sidValue !== "string" || typeof subValue !== "string") {
-        return reply.status(401).send({ error: "invalid_token" });
-      }
-      sid = sidValue;
-      sub = subValue;
-    } catch {
-      return reply.status(401).send({ error: "invalid_token" });
-    }
+    type Query = { ticket?: string };
+    const ticket = (req.query as Query | undefined)?.ticket;
+    if (!ticket) return reply.status(401).send({ error: "unauthorized" });
+    const entry = tickets.get(ticket);
+    tickets.delete(ticket);
+    if (!entry || entry.exp < Date.now()) return reply.status(401).send({ error: "invalid_ticket" });
+    const { sid, sub } = entry;
     const valid = await isSessionValid(sid);
     if (!valid) return reply.status(401).send({ error: "session_revoked" });
     const originHeader = (req.headers["origin"] || req.headers["Origin"]) as string | undefined;

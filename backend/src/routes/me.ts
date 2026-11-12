@@ -6,6 +6,19 @@ import { config } from "../config.js";
 import { ThemeUpdateSchema } from "../utils/validators.js";
 import { ldapFindByEmail, ldapSearchUsers } from "../auth/ldap.js";
 
+// Directory lookups are keyed per signed-in user (the JWT guard runs before them).
+const directoryRateLimit = (max: number) => ({
+  config: {
+    rateLimit: {
+      max,
+      timeWindow: 60_000,
+      hook: "preHandler" as const,
+      allowList: () => false,
+      keyGenerator: (req: { ip: string; user?: { id: string } }) => `dir|${req.user?.id ?? req.ip}`,
+    },
+  },
+});
+
 export const meRoutes = async (app: FastifyInstance) => {
   const meRouteOpts = config.nodeEnv !== "production" ? { config: { rateLimit: { max: 1200, timeWindow: 60_000 } } } : {};
   app.get("/me", meRouteOpts, async (_req, reply) => {
@@ -52,16 +65,20 @@ export const meRoutes = async (app: FastifyInstance) => {
     return reply.send(u);
   });
 
-  app.get("/users/lookup", async (req, reply) => {
+  app.get("/users/lookup", directoryRateLimit(20), async (req, reply) => {
     type Query = { email?: string };
-    const email = (req.query as Query | undefined)?.email;
+    const email = (req.query as Query | undefined)?.email?.trim();
     if (!email) return reply.status(400).send({ error: "email_required" });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email) || email.length > 254) {
+      return reply.status(400).send({ error: "invalid_email" });
+    }
     const u = await getUserByEmail(email);
     if (u) return reply.send(u);
     if (config.ldap.url) {
       const d = await ldapFindByEmail(email);
       if (d && d.email) {
         const id = await ensureUser(d.displayName || d.email, d.email, d.dn);
+        await writeAudit(req.user?.id ?? null, "user_provision", "user", id, { email: d.email, via: "lookup" });
         const created = await getUserById(id);
         if (created) return reply.send({ id: created.id, display_name: created.display_name, email: created.email });
       }
@@ -69,23 +86,25 @@ export const meRoutes = async (app: FastifyInstance) => {
     return reply.status(404).send({ error: "not_found" });
   });
 
-  app.get("/users/search", async (req, reply) => {
+  app.get("/users/search", directoryRateLimit(30), async (req, reply) => {
     const userId = req.user?.id;
     if (!userId) return reply.status(401).send({ error: "unauthorized" });
     type Query = { q?: string };
     const q = (req.query as Query | undefined)?.q || "";
     const term = q.trim();
-    if (term.length < 2) return reply.send({ items: [] });
-    const items = await searchUsers(term);
-    if (!config.ldap.url) return reply.send({ items });
+    if (term.length < 2 || term.length > 64) return reply.send({ items: [] });
+    const items = (await searchUsers(term)).slice(0, 10);
+    // The AD directory is only searched from 3 characters, to stop it being listed wholesale.
+    if (!config.ldap.url || term.length < 3) return reply.send({ items });
     const ldapItems = await ldapSearchUsers(term, 10);
+    await writeAudit(userId, "directory_search", "user", null, { term_length: term.length, results: ldapItems.length });
     const byEmail = new Set(items.map((i) => (i.email || "").toLowerCase()).filter(Boolean));
     type SearchItem = { id?: string; display_name?: string | null; email?: string | null };
     const merged = (items as SearchItem[]).concat(
       ldapItems
         .filter((u) => !!u.email && !byEmail.has(u.email!.toLowerCase()))
         .map((u) => ({ id: undefined, display_name: u.displayName || undefined, email: u.email || undefined }))
-    );
+    ).slice(0, 10);
     return reply.send({ items: merged });
   });
 };

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
+import { post } from '@/lib/api';
 
 const BASE = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -43,8 +44,11 @@ export function useSyncEvents({
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
+  // Bumped on every connect/disconnect so a ticket request that resolves late is ignored.
+  const generationRef = useRef(0);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
+    const generation = ++generationRef.current;
     const token = localStorage.getItem('sv.jwt');
     if (!token) {
       console.warn('No JWT token, skipping SSE connection');
@@ -56,9 +60,17 @@ export function useSyncEvents({
       eventSourceRef.current.close();
     }
 
-    // Create new EventSource with auth header via URL param (standard SSE limitation)
+    // EventSource cannot send headers: exchange the JWT (sent as a header) for a
+    // short-lived single-use ticket, so the JWT never appears in a URL or log.
+    const ticketRes = await post<{ ticket?: string }>('/sync/ticket', {});
+    const ticket = ticketRes.body?.ticket;
+    if (generation !== generationRef.current) return; // disconnected or reconnected meanwhile
+    if (!ticketRes.ok || !ticket) {
+      console.warn('Could not obtain a sync ticket', ticketRes.status);
+      return;
+    }
     const url = new URL(`${BASE}/sync/events`, window.location.origin);
-    url.searchParams.set('token', token);
+    url.searchParams.set('ticket', ticket);
     
     const eventSource = new EventSource(url.toString());
     eventSourceRef.current = eventSource;
@@ -92,7 +104,7 @@ export function useSyncEvents({
         
         reconnectTimeoutRef.current = setTimeout(() => {
           reconnectAttempts.current++;
-          connect();
+          void connect();
         }, delay);
       } else {
         console.error('SSE max reconnect attempts reached');
@@ -102,6 +114,7 @@ export function useSyncEvents({
   }, [onEvent, onVaultChange, onTeamChange, onError]);
 
   const disconnect = useCallback(() => {
+    generationRef.current++;
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
@@ -114,7 +127,7 @@ export function useSyncEvents({
 
   useEffect(() => {
     if (enabled) {
-      connect();
+      void connect();
     } else {
       disconnect();
     }
