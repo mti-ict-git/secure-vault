@@ -14,6 +14,7 @@ export type SyncEventKind =
   | 'team_role_update'
   | 'team_member_remove'
   | 'vault_share'
+  | 'notification'
   | 'heartbeat';
 
 export interface SyncEvent {
@@ -23,6 +24,7 @@ export interface SyncEvent {
   team_id?: string;
   member_id?: string;
   actor_user_id?: string;
+  target_user_id?: string;
 }
 
 interface UseSyncEventsOptions {

@@ -80,6 +80,7 @@ export const syncRoutes = async (app: FastifyInstance) => {
       reply.raw.write(`data: ${JSON.stringify(d)}\n\n`);
 
     const canSeeEvent = async (evt: SyncEvent) => {
+      if (evt.target_user_id) return evt.target_user_id.toLowerCase() === sub.toLowerCase();
       if (evt.vault_id) return canUserAccessVault(evt.vault_id, sub);
       if (evt.team_id) return isTeamMember(evt.team_id, sub);
       return evt.actor_user_id === sub;

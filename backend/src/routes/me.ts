@@ -5,6 +5,7 @@ import { getPublicKeysByUserId, getUserByEmail, getUserById, searchUsers, setThe
 import { config } from "../config.js";
 import { ThemeUpdateSchema } from "../utils/validators.js";
 import { ldapFindByEmail, ldapSearchUsers } from "../auth/ldap.js";
+import { dismissNotifications, listNotifications, markNotificationsRead } from "../repo/notifications.js";
 
 // Directory lookups are keyed per signed-in user (the JWT guard runs before them).
 const directoryRateLimit = (max: number) => ({
@@ -18,6 +19,28 @@ const directoryRateLimit = (max: number) => ({
     },
   },
 });
+
+// Actions the browser may record itself (things only the client sees, such as a copy
+// to clipboard). Everything security-relevant (shares, revokes, key changes, logins)
+// is written by the server and can never be forged through /audit/log.
+const CLIENT_AUDIT_ACTIONS = new Set([
+  "entry_create",
+  "entry_update",
+  "entry_delete",
+  "entry_favorite",
+  "entry_copy_to_team",
+  "entry_copy_to_user",
+  "folder_create",
+  "folder_delete",
+  "password_copy",
+  "username_copy",
+  "export_csv",
+  "export_json",
+  "export_kdbx",
+  "import_kdbx",
+  "vault_unlock",
+  "vault_unlock_failed",
+]);
 
 export const meRoutes = async (app: FastifyInstance) => {
   const meRouteOpts = config.nodeEnv !== "production" ? { config: { rateLimit: { max: 1200, timeWindow: 60_000 } } } : {};
@@ -52,9 +75,14 @@ export const meRoutes = async (app: FastifyInstance) => {
     const b = req.body as Body | undefined;
     const action = (b?.action || "").trim();
     if (!action) return reply.status(400).send({ error: "invalid_action" });
+    if (!CLIENT_AUDIT_ACTIONS.has(action)) return reply.status(400).send({ error: "action_not_allowed" });
+    const details = b?.details;
+    if (details !== undefined && JSON.stringify(details).length > 2000) {
+      return reply.status(400).send({ error: "details_too_large" });
+    }
     const rid = (b?.resource_id || null) as string | null;
     const rtype = (b?.resource_type || null) as string | null;
-    await writeAudit(userId, action, rtype, rid, b?.details);
+    await writeAudit(userId, action, rtype, rid, details);
     return reply.send({ ok: true });
   });
   app.get("/users/:id/public-keys", async (req, reply) => {
@@ -106,5 +134,23 @@ export const meRoutes = async (app: FastifyInstance) => {
         .map((u) => ({ id: undefined, display_name: u.displayName || undefined, email: u.email || undefined }))
     ).slice(0, 10);
     return reply.send({ items: merged });
+  });
+
+  app.get("/notifications", async (req, reply) => {
+    const userId = req.user?.id;
+    if (!userId) return reply.status(401).send({ error: "unauthorized" });
+    return reply.send({ items: await listNotifications(userId) });
+  });
+  app.post("/notifications/read", async (req, reply) => {
+    const userId = req.user?.id;
+    if (!userId) return reply.status(401).send({ error: "unauthorized" });
+    await markNotificationsRead(userId);
+    return reply.send({ ok: true });
+  });
+  app.post("/notifications/dismiss", async (req, reply) => {
+    const userId = req.user?.id;
+    if (!userId) return reply.status(401).send({ error: "unauthorized" });
+    await dismissNotifications(userId);
+    return reply.send({ ok: true });
   });
 };

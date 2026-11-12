@@ -4,6 +4,7 @@ import { createShare, deleteShare, getShare, listSharesForVault } from "../repo/
 import { writeAudit } from "../repo/audit.js";
 import { getVault, getVaultAccessForUser } from "../repo/vaults.js";
 import { publishSyncEvent } from "../state/store.js";
+import { notifyBlocked, notifyShareCreated, notifyShareRevoked } from "../notify.js";
 
 export const shareRoutes = async (app: FastifyInstance) => {
   app.post("/", async (req, reply) => {
@@ -27,6 +28,7 @@ export const shareRoutes = async (app: FastifyInstance) => {
       // a transfer vault created by Copy to User.
       if (vault.purpose !== "transfer" || String(vault.owner_user_id).toLowerCase() !== actorId.toLowerCase()) {
         await writeAudit(actorId, "vault_share_blocked", "vault", body.source_vault_id, { target_user_id: body.target_user_id, target_team_id: body.target_team_id });
+        await notifyBlocked(body.source_vault_id, actorId, "share");
         return reply.status(403).send({ error: "personal_vault_not_shareable" });
       }
     }
@@ -39,6 +41,7 @@ export const shareRoutes = async (app: FastifyInstance) => {
     );
     await writeAudit(actorId, "vault_share", "vault", body.source_vault_id, { share_id: id, target_user_id: body.target_user_id, target_team_id: body.target_team_id, permissions: body.permissions });
     publishSyncEvent({ t: Date.now(), type: "vault_share", vault_id: body.source_vault_id, actor_user_id: actorId });
+    await notifyShareCreated(body.source_vault_id, actorId, body.target_user_id || null, body.permissions);
     return reply.status(201).send({ id });
   });
 
@@ -71,6 +74,7 @@ export const shareRoutes = async (app: FastifyInstance) => {
       target_team_id: share.target_team_id,
     });
     publishSyncEvent({ t: Date.now(), type: "vault_share", vault_id: share.source_vault_id, actor_user_id: userId });
+    await notifyShareRevoked(share.source_vault_id, userId, share.target_user_id);
     // The revoked user may still hold the old vault key: the client must now rotate it.
     return reply.send({ ok: true, rotate_required: true });
   });

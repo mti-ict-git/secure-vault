@@ -11,6 +11,7 @@ import { publishSyncEvent, uid } from "../state/store.js";
 import { commitKeyRotation, getVault, getVaultAccessForUser } from "../repo/vaults.js";
 import { listSharesForVault } from "../repo/shares.js";
 import { Readable } from "stream";
+import { notifyBlocked, notifyKeyRotated, notifyVaultUpdated } from "../notify.js";
 
 export const blobRoutes = async (app: FastifyInstance) => {
   await app.register(multipart, {
@@ -47,6 +48,7 @@ export const blobRoutes = async (app: FastifyInstance) => {
     ) {
       // A primary personal vault is written only by its owner, whatever the share table says.
       await writeAudit(userId, "blob_upload_blocked", "vault", vaultId, { reason: "not_owner_of_personal_vault" });
+      await notifyBlocked(vaultId, userId, "write");
       return reply.status(403).send({ error: "personal_vault_owner_only" });
     }
     const requestWithParts = req as FastifyRequest & {
@@ -113,6 +115,7 @@ export const blobRoutes = async (app: FastifyInstance) => {
     );
     await writeAudit(userId, "blob_upload", "vault", vaultId, { blob_id: id, blob_type: effectiveBlobType });
     publishSyncEvent({ t: Date.now(), type: "blob_upload", vault_id: vaultId, actor_user_id: userId });
+    await notifyVaultUpdated(vaultId, userId);
     return reply.status(201).send({ id });
     }
   );
@@ -226,6 +229,7 @@ export const blobRoutes = async (app: FastifyInstance) => {
       remaining_shares: shares.length,
     });
     publishSyncEvent({ t: Date.now(), type: "blob_upload", vault_id: vaultId, actor_user_id: userId });
+    await notifyKeyRotated(vaultId, userId);
     return reply.send({ ok: true, key_version: result.key_version });
   });
 };

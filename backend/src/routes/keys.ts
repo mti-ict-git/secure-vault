@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { KeysRegisterSchema } from "../utils/validators.js";
 import { archiveKeys, clearKeys, getKeys, getUserById, upsertKeys } from "../repo/users.js";
 import { ldapLogin } from "../auth/ldap.js";
+import { notifyKeysReset } from "../notify.js";
 import { writeAudit } from "../repo/audit.js";
 
 export const keysRoutes = async (app: FastifyInstance) => {
@@ -62,6 +63,7 @@ export const keysRoutes = async (app: FastifyInstance) => {
       await archiveKeys(userId, "user_reset");
       await clearKeys(userId);
       await writeAudit(userId, "keys_reset", "user", userId, {});
+      await notifyKeysReset(userId);
       return reply.send({ ok: true });
     }
   );
