@@ -8,7 +8,7 @@ import { config } from "../config.js";
 import { createReadStream } from "fs";
 import { DatabaseAdapter, FileSystemAdapter } from "../storage/adapter.js";
 import { publishSyncEvent, uid } from "../state/store.js";
-import { getVaultAccessForUser } from "../repo/vaults.js";
+import { getVault, getVaultAccessForUser } from "../repo/vaults.js";
 
 export const blobRoutes = async (app: FastifyInstance) => {
   await app.register(multipart, {
@@ -33,6 +33,19 @@ export const blobRoutes = async (app: FastifyInstance) => {
     const access = await getVaultAccessForUser(vaultId, userId);
     if (!access) return reply.status(403).send({ error: "forbidden" });
     if (access.permissions !== "write") return reply.status(403).send({ error: "forbidden" });
+    const targetVault = (await getVault(vaultId)) as
+      | { kind?: string; purpose?: string; owner_user_id?: string | null }
+      | null;
+    if (!targetVault) return reply.status(404).send({ error: "not_found" });
+    if (
+      targetVault.kind === "personal" &&
+      targetVault.purpose !== "transfer" &&
+      String(targetVault.owner_user_id).toLowerCase() !== userId.toLowerCase()
+    ) {
+      // A primary personal vault is written only by its owner, whatever the share table says.
+      await writeAudit(userId, "blob_upload_blocked", "vault", vaultId, { reason: "not_owner_of_personal_vault" });
+      return reply.status(403).send({ error: "personal_vault_owner_only" });
+    }
     const requestWithParts = req as FastifyRequest & {
       parts: () => AsyncIterableIterator<Multipart>;
     };

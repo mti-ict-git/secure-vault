@@ -159,3 +159,23 @@ export const isSessionValid = async (sessionId: string) => {
     .query("SELECT TOP 1 * FROM dbo.sessions WHERE id=@id AND revoked_at IS NULL");
   return !!r.recordset.length;
 };
+
+export const revokeSession = async (sessionId: string) => {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("id", sessionId)
+    .query("UPDATE dbo.sessions SET revoked_at = SYSUTCDATETIME() WHERE id=@id AND revoked_at IS NULL");
+};
+
+export const archiveKeys = async (userId: string, reason: string) => {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("id", uid())
+    .input("user_id", userId)
+    .input("reason", reason)
+    .query(
+      "INSERT INTO dbo.user_keys_archive (id,user_id,public_sign_key,public_enc_key,encrypted_private_key,reason,archived_at) SELECT @id, id, public_sign_key, public_enc_key, encrypted_private_key, @reason, SYSUTCDATETIME() FROM dbo.users WHERE id=@user_id AND encrypted_private_key IS NOT NULL"
+    );
+};

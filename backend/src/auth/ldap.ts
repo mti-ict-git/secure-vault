@@ -25,7 +25,7 @@ const escapeLdapFilterValue = (value: string): string => {
 
 export const ldapLogin = async (username: string, password: string) => {
   if (!config.ldap.url) {
-    if (username === "demo" && password === "demo") {
+    if (process.env.ALLOW_DEMO_LOGIN === "true" && username === "demo" && password === "demo") {
       return { dn: `cn=${username}`, email: `${username}@example.com` };
     }
     throw new Error("invalid_credentials");
@@ -97,10 +97,6 @@ export const ldapLogin = async (username: string, password: string) => {
   try {
     await client.bind(adminBindDN, adminBindPassword);
   } catch (adminErr: unknown) {
-    if (config.nodeEnv === "development" && username === "demo" && password === "demo") {
-      await client.unbind();
-      return { dn: `cn=${username}`, email: `${username}@example.com` };
-    }
     const parts = searchBase.split(",").map((s) => s.trim());
     const dcs = parts.filter((p) => p.toUpperCase().startsWith("DC=")).map((p) => p.slice(3));
     const domainSuffix = dcs.length ? dcs.join(".") : "";

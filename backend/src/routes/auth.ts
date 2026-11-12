@@ -3,12 +3,24 @@ import { LoginSchema } from "../utils/validators.js";
 import { signJwt } from "../utils/jwt.js";
 import { store, uid } from "../state/store.js";
 import { ldapLogin } from "../auth/ldap.js";
-import { ensureUser, createSession, getUserById } from "../repo/users.js";
+import { ensureUser, createSession, getUserById, revokeSession } from "../repo/users.js";
 import { writeAudit } from "../repo/audit.js";
-import { config } from "../config.js";
 
 export const authRoutes = async (app: FastifyInstance) => {
-  const loginRouteOpts = config.nodeEnv !== "production" ? { config: { rateLimit: false as const } } : {};
+  // Always rate-limited, independent of NODE_ENV and of the private-IP allowlist:
+  // 10 attempts per 15 minutes per client IP + username.
+  const loginRouteOpts = {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: 15 * 60 * 1000,
+        hook: "preHandler" as const,
+        allowList: () => false,
+        keyGenerator: (req: { ip: string; body?: unknown }) =>
+          `${req.ip}|${String((req.body as { username?: unknown } | undefined)?.username ?? "").toLowerCase()}`,
+      },
+    },
+  };
   app.post("/ldap/login", loginRouteOpts, async (req, reply) => {
     try {
       const body = LoginSchema.parse(req.body);
@@ -37,10 +49,11 @@ export const authRoutes = async (app: FastifyInstance) => {
     }
   });
   app.post("/logout", async (req, reply) => {
+    const sid = req.user?.sid;
+    if (sid) {
+      await revokeSession(sid);
+      await writeAudit(req.user?.id ?? null, "auth_logout", "user", req.user?.id ?? null, {});
+    }
     return reply.send({ ok: true });
-  });
-  app.post("/refresh", async (req, reply) => {
-    const token = signJwt({ sub: "placeholder" });
-    return reply.send({ token });
   });
 };

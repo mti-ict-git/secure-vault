@@ -19,6 +19,8 @@ export const loginLdap = async (username: string, password: string): Promise<Log
 };
 
 export const logout = () => {
+  // Revoke the session on the server; clear the local token regardless of the result.
+  void post("/auth/logout", {}).catch(() => undefined);
   localStorage.removeItem("sv.jwt");
 };
 

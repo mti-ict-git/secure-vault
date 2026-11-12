@@ -140,8 +140,8 @@ export function useVault() {
     }
   }, []);
 
-  const resetKeys = useCallback(async (): Promise<boolean> => {
-    const res = await post<{ ok?: boolean }>('/keys/reset', {});
+  const resetKeys = useCallback(async (adPassword: string): Promise<boolean> => {
+    const res = await post<{ ok?: boolean }>('/keys/reset', { password: adPassword });
     if (!res.ok || !res.body?.ok) return false;
     lock();
     setNeedsKeySetup(true);
