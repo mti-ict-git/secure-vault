@@ -18,7 +18,11 @@ interface VaultRecord {
   vault_key_wrapped_for_user: string;
   version: number;
   permissions?: 'read' | 'write';
+  /** 1 when this is the caller's own primary personal vault (not a shared or transfer vault). */
+  is_own_primary?: number | boolean;
 }
+
+const isOwnPrimary = (v: VaultRecord) => v.is_own_primary === 1 || v.is_own_primary === true;
 
 type CreateVaultResponse = { id?: string; error?: string };
 
@@ -156,13 +160,20 @@ export function useVault() {
     }, INACTIVITY_TIMEOUT);
   }, [lock]);
 
-  const checkKeysRegistered = useCallback(async (): Promise<boolean> => {
-    const res = await get<KeysMeResponse>('/keys/me');
-    return res.ok && hasRegisteredKeys(res.body);
+  // 'error' means the server could not answer; never treat that as "no keys",
+  // or the user is pushed to set up a new master password and overwrite their keys.
+  const checkKeysRegistered = useCallback(async (): Promise<'yes' | 'no' | 'error'> => {
+    try {
+      const res = await get<KeysMeResponse>('/keys/me');
+      if (!res.ok) return 'error';
+      return hasRegisteredKeys(res.body) ? 'yes' : 'no';
+    } catch {
+      return 'error';
+    }
   }, []);
 
   const getPersonalVaultId = useCallback((): string | null => {
-    const personal = vaults.find((v) => v.kind === 'personal');
+    const personal = vaults.find(isOwnPrimary);
     return personal?.id ?? currentVaultId;
   }, [currentVaultId, vaults]);
 
@@ -246,7 +257,7 @@ export function useVault() {
     let vaultRecords = res.body.items;
     setVaults(vaultRecords);
 
-    if (vaultRecords.length === 0) {
+    if (!vaultRecords.some(isOwnPrimary)) {
       const vaultKey = crypto.getRandomValues(new Uint8Array(32));
       const wrapped = await sealToRecipient(keys.privateKeys.enc_pk_b64, vaultKey);
       const createRes = await post<CreateVaultResponse>('/vaults', {
@@ -258,18 +269,21 @@ export function useVault() {
       if (!createRes.ok || typeof id !== 'string') {
         return { entries: [], folders: [], vaultId: null };
       }
-      vaultRecords = [
-        {
-          id,
-          kind: 'personal',
-          team_id: null,
-          vault_key_wrapped_for_user: wrapped,
-          version: 1,
-        },
-      ];
+      const ownPrimary: VaultRecord = {
+        id,
+        kind: 'personal',
+        team_id: null,
+        vault_key_wrapped_for_user: wrapped,
+        version: 1,
+        is_own_primary: 1,
+      };
       keys.vaultKeys.set(id, vaultKey);
+      if (vaultRecords.length === 0) {
+        setVaults([ownPrimary]);
+        return { entries: [], folders: [], vaultId: id };
+      }
+      vaultRecords = [ownPrimary, ...vaultRecords];
       setVaults(vaultRecords);
-      return { entries: [], folders: [], vaultId: id };
     }
 
     // Decrypt vault keys and fetch blobs for each vault
@@ -287,7 +301,7 @@ export function useVault() {
         );
         keys.vaultKeys.set(vault.id, vaultKey);
 
-        if (!primaryVaultId && vault.kind === 'personal') {
+        if (!primaryVaultId && isOwnPrimary(vault)) {
           primaryVaultId = vault.id;
         }
 
@@ -637,7 +651,11 @@ export function useVault() {
     try {
       // First check if user has keys registered
       const hasKeys = await checkKeysRegistered();
-      if (!hasKeys) {
+      if (hasKeys === 'error') {
+        console.error('Server unavailable while checking keys');
+        return false;
+      }
+      if (hasKeys === 'no') {
         setNeedsKeySetup(true);
         return false;
       }

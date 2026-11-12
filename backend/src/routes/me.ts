@@ -80,7 +80,8 @@ export const meRoutes = async (app: FastifyInstance) => {
     if (!config.ldap.url) return reply.send({ items });
     const ldapItems = await ldapSearchUsers(term, 10);
     const byEmail = new Set(items.map((i) => (i.email || "").toLowerCase()).filter(Boolean));
-    const merged = items.concat(
+    type SearchItem = { id?: string; display_name?: string | null; email?: string | null };
+    const merged = (items as SearchItem[]).concat(
       ldapItems
         .filter((u) => !!u.email && !byEmail.has(u.email!.toLowerCase()))
         .map((u) => ({ id: undefined, display_name: u.displayName || undefined, email: u.email || undefined }))

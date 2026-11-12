@@ -398,12 +398,18 @@ export function VaultDashboard({
   };
 
   const openShareDialog = () => {
-    const vId = selectedTeam ? getVaultIdForTeamId(selectedTeam) : currentVaultId;
+    // Sharing is only for team vaults. Sharing the personal vault would hand its key
+    // (and every personal password) to the recipients. Use "Copy to User" instead.
+    if (!selectedTeam) {
+      toast.error('Personal vault cannot be shared. Select entries and use Copy to User.');
+      return;
+    }
+    const vId = getVaultIdForTeamId(selectedTeam);
     if (!vId) {
       toast.error('Vault not available');
       return;
     }
-    const vKey = selectedTeam ? getVaultKeyByVaultId(vId) : getCurrentVaultKey();
+    const vKey = getVaultKeyByVaultId(vId);
     if (!vKey) {
       toast.error('Vault key unavailable');
       return;
@@ -644,7 +650,7 @@ export function VaultDashboard({
 
       const vaultKey = crypto.getRandomValues(new Uint8Array(32));
       const wrappedForCreator = await sealToRecipient(encPk, vaultKey);
-      const createRes = await post<{ id?: string }>(`/vaults`, { kind: 'personal', version: 1, vault_key_wrapped: wrappedForCreator });
+      const createRes = await post<{ id?: string }>(`/vaults`, { kind: 'personal', purpose: 'transfer', version: 1, vault_key_wrapped: wrappedForCreator });
       const newVaultId = createRes.body?.id || null;
       if (!createRes.ok || !newVaultId) {
         toast.error('Failed to create temporary vault for sharing');
@@ -824,7 +830,7 @@ export function VaultDashboard({
             <Button variant="outline" size="icon">
               <SortAsc className="w-4 h-4" />
             </Button>
-            <Button variant="outline" size="icon" onClick={openShareDialog}>
+            <Button variant="outline" size="icon" onClick={openShareDialog} disabled={!selectedTeam} title={selectedTeam ? 'Share team vault' : 'Personal vault cannot be shared'}>
               <Share2 className="w-4 h-4" />
             </Button>
             <Button onClick={() => setAddDialogOpen(true)} disabled={selectedTeam ? isTeamReadOnly : false}>

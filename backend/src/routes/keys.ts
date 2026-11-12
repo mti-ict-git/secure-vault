@@ -8,6 +8,12 @@ export const keysRoutes = async (app: FastifyInstance) => {
     const body = KeysRegisterSchema.parse(req.body);
     const userId = req.user?.id;
     if (!userId) return reply.status(401).send({ error: "unauthorized" });
+    const existing = (await getKeys(userId)) as { encrypted_private_key?: string | null } | null;
+    if (existing?.encrypted_private_key) {
+      // Overwriting would make every vault key wrapped for the old key pair undecryptable.
+      // Re-registration requires an explicit POST /keys/reset first.
+      return reply.status(409).send({ error: "keys_already_registered" });
+    }
     await upsertKeys(
       userId,
       body.public_sign_key,

@@ -3,7 +3,16 @@ import { uid } from "../state/store.js";
 
 export type VaultPermissions = "read" | "write";
 
-export const createVault = async (owner_user_id: string | null, team_id: string | null, kind: "personal" | "team", version: number, vault_key_wrapped: string) => {
+export type VaultPurpose = "primary" | "transfer";
+
+export const createVault = async (
+  owner_user_id: string | null,
+  team_id: string | null,
+  kind: "personal" | "team",
+  version: number,
+  vault_key_wrapped: string,
+  purpose: VaultPurpose = "primary"
+) => {
   const id = uid();
   const pool = await getPool();
   await pool
@@ -14,8 +23,9 @@ export const createVault = async (owner_user_id: string | null, team_id: string 
     .input("kind", kind)
     .input("version", version)
     .input("vault_key_wrapped", vault_key_wrapped)
+    .input("purpose", purpose)
     .query(
-      "INSERT INTO dbo.vaults (id,owner_user_id,team_id,kind,version,vault_key_wrapped,created_at,updated_at) VALUES (@id,@owner_user_id,@team_id,@kind,@version,@vault_key_wrapped,SYSUTCDATETIME(),SYSUTCDATETIME())"
+      "INSERT INTO dbo.vaults (id,owner_user_id,team_id,kind,version,vault_key_wrapped,purpose,created_at,updated_at) VALUES (@id,@owner_user_id,@team_id,@kind,@version,@vault_key_wrapped,@purpose,SYSUTCDATETIME(),SYSUTCDATETIME())"
     );
   return id;
 };
@@ -26,7 +36,8 @@ export const listVaultsForUser = async (userId: string) => {
     .request()
     .input("user_id", userId)
     .query(
-      `SELECT v.*, 
+      `SELECT v.*,
+        CASE WHEN v.kind='personal' AND v.owner_user_id=@user_id AND v.purpose='primary' THEN 1 ELSE 0 END as is_own_primary,
         COALESCE(
           CASE WHEN v.owner_user_id=@user_id THEN v.vault_key_wrapped END,
           s.wrapped_key,
@@ -46,7 +57,8 @@ export const listVaultsForUser = async (userId: string) => {
       ) tm_last
       WHERE (v.owner_user_id=@user_id)
         OR (v.team_id IS NOT NULL AND tm_last.id IS NOT NULL AND tm_last.joined_at IS NOT NULL)
-        OR (s.id IS NOT NULL)`
+        OR (s.id IS NOT NULL)
+      ORDER BY is_own_primary DESC, v.created_at ASC`
     );
   return r.recordset;
 };
@@ -78,4 +90,13 @@ export const getVaultAccessForUser = async (
 export const canUserAccessVault = async (vault_id: string, user_id: string) => {
   const access = await getVaultAccessForUser(vault_id, user_id);
   return access !== null;
+};
+
+export const hasPrimaryPersonalVault = async (user_id: string) => {
+  const pool = await getPool();
+  const r = await pool
+    .request()
+    .input("user_id", user_id)
+    .query("SELECT TOP 1 id FROM dbo.vaults WHERE kind='personal' AND owner_user_id=@user_id AND purpose='primary'");
+  return r.recordset.length > 0;
 };

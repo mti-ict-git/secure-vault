@@ -16,6 +16,7 @@ export const CreateVaultSchema = z.object({
   team_id: z.string().uuid().optional(),
   version: z.number().int().min(1),
   vault_key_wrapped: z.string().min(16),
+  purpose: z.enum(["primary", "transfer"]).optional(),
 });
 
 export const InviteSchema = z.object({
