@@ -38,6 +38,9 @@ const Index = () => {
     listVaultShares,
     rotateVaultKey,
     revokeShare,
+    listVaultHistory,
+    loadSnapshot,
+    restoreSnapshot,
   } = useVault();
 
   const {
@@ -140,6 +143,9 @@ const Index = () => {
       listVaultShares={listVaultShares}
       rotateVaultKey={rotateVaultKey}
       revokeShare={revokeShare}
+      listVaultHistory={listVaultHistory}
+      loadSnapshot={loadSnapshot}
+      restoreSnapshot={restoreSnapshot}
     />
   );
 };

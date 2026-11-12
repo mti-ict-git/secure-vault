@@ -986,6 +986,73 @@ export function useVault() {
     return true;
   }, [listVaultShares, refresh]);
 
+  type SnapshotHistoryItem = {
+    id: string;
+    created_at: string;
+    created_by_name?: string | null;
+    size_bytes?: number;
+  };
+
+  const listVaultHistory = useCallback(async (vaultId: string): Promise<SnapshotHistoryItem[] | null> => {
+    const res = await get<{ items: (SnapshotHistoryItem & { blob_type: string })[] }>(`/vaults/${vaultId}/blobs`);
+    if (!res.ok || !res.body?.items) return null;
+    return res.body.items.filter((b) => b.blob_type === 'snapshot');
+  }, []);
+
+  /** Decrypt one historical snapshot with the vault's current key; null if it was encrypted with an older key. */
+  const loadSnapshot = useCallback(async (vaultId: string, blobId: string): Promise<VaultSnapshotV1 | null> => {
+    const keys = keysRef.current;
+    if (!keys) return null;
+    let vaultKey = keys.vaultKeys.get(vaultId) ?? null;
+    if (!vaultKey) {
+      const record = vaults.find((v) => v.id === vaultId);
+      if (!record) return null;
+      vaultKey = await openSealed(record.vault_key_wrapped_for_user, keys.privateKeys.enc_pk_b64, keys.privateKeys.enc_sk_b64);
+      keys.vaultKeys.set(vaultId, vaultKey);
+    }
+    const data = await getBinary(`/vaults/${vaultId}/blobs/${blobId}`);
+    if (!data.ok) return null;
+    try {
+      return await decryptVaultSnapshot(vaultKey, deserializeEncryptedSnapshot(data.data));
+    } catch {
+      return null; // written before a key rotation
+    }
+  }, [vaults]);
+
+  /**
+   * Restore = upload the chosen snapshot again as the newest version. Nothing is
+   * deleted: the version being replaced stays in the history.
+   */
+  const restoreSnapshot = useCallback(async (vaultId: string, blobId: string): Promise<boolean> => {
+    const keys = keysRef.current;
+    const snapshot = await loadSnapshot(vaultId, blobId);
+    const vaultKey = keys?.vaultKeys.get(vaultId);
+    if (!keys || !snapshot || !vaultKey) {
+      toast.error('This version cannot be restored (it may predate a key rotation).');
+      return false;
+    }
+    const encrypted = await encryptVaultSnapshot(vaultKey, snapshot);
+    const bytes = serializeEncryptedSnapshot(encrypted);
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', buffer));
+    const form = new FormData();
+    form.append('meta', JSON.stringify({
+      blob_type: 'snapshot',
+      content_sha256: Array.from(hash).map((b) => b.toString(16).padStart(2, '0')).join(''),
+      size_bytes: bytes.length,
+      key_version: vaults.find((v) => v.id === vaultId)?.key_version ?? 1,
+    }));
+    form.append('file', new Blob([buffer], { type: 'application/octet-stream' }));
+    const res = await postForm<{ id?: string; error?: string }>(`/vaults/${vaultId}/blobs`, form);
+    if (!res.ok) {
+      toast.error(`Restore failed (${res.status}${res.body?.error ? `: ${res.body.error}` : ''})`);
+      return false;
+    }
+    void post('/audit/log', { action: 'vault_restore', resource_type: 'vault', resource_id: vaultId, details: { from_blob_id: blobId } });
+    await refresh();
+    return true;
+  }, [loadSnapshot, refresh, vaults]);
+
   /** Revoke one share, then re-key the vault so the revoked user's copy of the key is useless. */
   const revokeShare = useCallback(async (vaultId: string, shareId: string): Promise<boolean> => {
     const res = await del<{ ok?: boolean }>(`/shares/${shareId}`);
@@ -1035,6 +1102,9 @@ export function useVault() {
     listVaultShares,
     rotateVaultKey,
     revokeShare,
+    listVaultHistory,
+    loadSnapshot,
+    restoreSnapshot,
     undoLastImport,
     addEntry,
     updateEntry,

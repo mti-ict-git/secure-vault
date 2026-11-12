@@ -40,6 +40,7 @@ const CLIENT_AUDIT_ACTIONS = new Set([
   "import_kdbx",
   "vault_unlock",
   "vault_unlock_failed",
+  "vault_restore",
 ]);
 
 export const meRoutes = async (app: FastifyInstance) => {

@@ -50,7 +50,14 @@ export const getBlobData = async (blob_id: string): Promise<Buffer | null> => {
 
 export const listBlobs = async (vault_id: string) => {
   const pool = await getPool();
-  const r = await pool.request().input("vault_id", vault_id).query("SELECT * FROM dbo.vault_blobs WHERE vault_id=@vault_id ORDER BY created_at DESC");
+  // Newest first, with the uploader's name for the history view. Capped: the client only
+  // ever needs the latest snapshot or a recent history.
+  const r = await pool
+    .request()
+    .input("vault_id", vault_id)
+    .query(
+      "SELECT TOP 200 b.*, u.display_name AS created_by_name FROM dbo.vault_blobs b LEFT JOIN dbo.users u ON u.id = b.created_by WHERE b.vault_id=@vault_id ORDER BY b.created_at DESC"
+    );
   return r.recordset;
 };
 

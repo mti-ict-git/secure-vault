@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { Search, Plus, Filter, SortAsc, Users, UserPlus, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X, ListChecks, RefreshCw, Share2, Activity } from 'lucide-react';
+import { Search, Plus, Filter, SortAsc, Users, UserPlus, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X, ListChecks, RefreshCw, Share2, Activity, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { VaultSidebar } from '@/components/VaultSidebar';
@@ -10,6 +10,7 @@ import { TeamMembersDialog } from '@/components/TeamMembersDialog';
 import { KdbxImportExportDialog } from '@/components/KdbxImportExportDialog';
 import { ShareVaultDialog } from '@/components/ShareVaultDialog';
 import { VaultAccessDialog, type OwnedVault, type VaultShareItem } from '@/components/VaultAccessDialog';
+import { VaultHistoryDialog, type SnapshotHistoryItem } from '@/components/VaultHistoryDialog';
 import { SecurityDashboard } from '@/components/SecurityDashboard';
 import { NotificationsBell } from '@/components/NotificationsBell';
 import { PasswordEntry, Folder, Team, TeamInvite } from '@/types/vault';
@@ -139,6 +140,10 @@ interface VaultDashboardProps {
   listVaultShares?: (vaultId: string) => Promise<VaultShareItem[] | null>;
   rotateVaultKey?: (vaultId: string) => Promise<boolean>;
   revokeShare?: (vaultId: string, shareId: string) => Promise<boolean>;
+  // Version history
+  listVaultHistory?: (vaultId: string) => Promise<SnapshotHistoryItem[] | null>;
+  loadSnapshot?: (vaultId: string, blobId: string) => Promise<VaultSnapshotV1 | null>;
+  restoreSnapshot?: (vaultId: string, blobId: string) => Promise<boolean>;
 }
 
 export function VaultDashboard({
@@ -175,6 +180,9 @@ export function VaultDashboard({
   listVaultShares,
   rotateVaultKey,
   revokeShare,
+  listVaultHistory,
+  loadSnapshot,
+  restoreSnapshot,
 }: VaultDashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
@@ -352,6 +360,7 @@ export function VaultDashboard({
   const [bulkCopyUserLoading, setBulkCopyUserLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [shareVaultId, setShareVaultId] = useState<string | null>(null);
   const [shareVaultKey, setShareVaultKey] = useState<Uint8Array | null>(null);
   
@@ -1077,6 +1086,12 @@ export function VaultDashboard({
                       <RefreshCw className="w-4 h-4" />
                       Refresh
                     </Button>
+                    {listVaultHistory && (
+                      <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)} title="See and restore earlier versions of this vault">
+                        <History className="w-4 h-4" />
+                        History
+                      </Button>
+                    )}
                     {filteredEntries.length > 0 && (
                       <Button variant="outline" size="sm" onClick={toggleSelectAllFiltered}>
                         <ListChecks className="w-4 h-4" />
@@ -1216,6 +1231,18 @@ export function VaultDashboard({
             listVaultShares={listVaultShares}
             rotateVaultKey={rotateVaultKey}
             revokeShare={revokeShare}
+          />
+        )}
+        {listVaultHistory && loadSnapshot && restoreSnapshot && (
+          <VaultHistoryDialog
+            open={historyOpen}
+            onOpenChange={setHistoryOpen}
+            vaultId={selectedTeam ? getVaultIdForTeamId(selectedTeam) : currentVaultId}
+            vaultLabel={selectedTeam ? teams.find((t) => t.id === selectedTeam)?.name ?? 'Team vault' : 'My Vault'}
+            canRestore={selectedTeam ? !isTeamReadOnly : true}
+            listVaultHistory={listVaultHistory}
+            loadSnapshot={loadSnapshot}
+            restoreSnapshot={restoreSnapshot}
           />
         )}
         <ShareVaultDialog
