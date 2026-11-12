@@ -1,13 +1,16 @@
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { SyncEvent } from "@/hooks/useSyncEvents";
+import { get, post } from "@/lib/api";
+
+export type NotificationSeverity = "info" | "warning" | "critical";
 
 export type NotificationItem = {
   id: string;
   t: number;
-  type: SyncEvent["type"];
+  type: string;
+  severity: NotificationSeverity;
   message: string;
   read: boolean;
-  raw: SyncEvent;
 };
 
 export type NotificationsContextValue = {
@@ -26,79 +29,69 @@ export const NotificationsContext = createContext<NotificationsContextValue>({
   clear: () => {},
 });
 
-const formatSyncEventMessage = (event: SyncEvent) => {
-  switch (event.type) {
-    case "vault_create":
-      return "Vault created";
-    case "blob_upload":
-      return "File uploaded";
-    case "team_create":
-      return "Team created";
-    case "team_invite":
-      return "Team invite sent";
-    case "team_invite_accept":
-      return "Team invite accepted";
-    case "team_update":
-      return "Team updated";
-    case "team_delete":
-      return "Team deleted";
-    case "team_role_update":
-      return "Team role updated";
-    case "team_member_remove":
-      return "Team member removed";
-    case "vault_share":
-      return "Vault shared";
-    case "heartbeat":
-      return "Sync heartbeat";
-    default:
-      return "New activity";
-  }
+type ServerNotification = {
+  id: string;
+  type: string;
+  severity?: NotificationSeverity;
+  message: string;
+  created_at: string;
+  read_at: string | null;
 };
 
-const makeId = () => {
-  if (globalThis.crypto && "randomUUID" in globalThis.crypto) {
-    return globalThis.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-};
-
+/**
+ * Notifications are stored on the server (security receipts and alerts), so they
+ * survive reloads and reach users who were offline. Sync events only trigger a refetch.
+ */
 export const NotificationsProvider = ({ children }: { children: React.ReactNode }) => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const fetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const pushSyncEvent = useCallback((event: SyncEvent) => {
-    if (event.type === "heartbeat") return;
-    setNotifications((prev) => {
-      const next: NotificationItem = {
-        id: makeId(),
-        t: event.t,
-        type: event.type,
-        message: formatSyncEventMessage(event),
-        read: false,
-        raw: event,
-      };
-      const merged = [next, ...prev];
-      return merged.slice(0, 50);
-    });
+  const load = useCallback(async () => {
+    const res = await get<{ items: ServerNotification[] }>("/notifications");
+    if (!res.ok || !res.body?.items) return;
+    setNotifications(
+      res.body.items.map((n) => ({
+        id: n.id,
+        t: new Date(n.created_at).getTime(),
+        type: n.type,
+        severity: n.severity ?? "info",
+        message: n.message,
+        read: !!n.read_at,
+      }))
+    );
   }, []);
+
+  useEffect(() => {
+    void load();
+    return () => {
+      if (fetchTimer.current) clearTimeout(fetchTimer.current);
+    };
+  }, [load]);
+
+  const pushSyncEvent = useCallback(
+    (event: SyncEvent) => {
+      if (event.type !== "notification") return;
+      // Several notifications can arrive together; fetch once.
+      if (fetchTimer.current) clearTimeout(fetchTimer.current);
+      fetchTimer.current = setTimeout(() => void load(), 300);
+    },
+    [load]
+  );
 
   const markAllRead = useCallback(() => {
     setNotifications((prev) => prev.map((n) => (n.read ? n : { ...n, read: true })));
+    void post("/notifications/read", {});
   }, []);
 
   const clear = useCallback(() => {
     setNotifications([]);
+    void post("/notifications/dismiss", {});
   }, []);
 
   const unreadCount = useMemo(() => notifications.reduce((acc, n) => acc + (n.read ? 0 : 1), 0), [notifications]);
 
   const value: NotificationsContextValue = useMemo(
-    () => ({
-      notifications,
-      unreadCount,
-      pushSyncEvent,
-      markAllRead,
-      clear,
-    }),
+    () => ({ notifications, unreadCount, pushSyncEvent, markAllRead, clear }),
     [notifications, unreadCount, pushSyncEvent, markAllRead, clear]
   );
 

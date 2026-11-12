@@ -25,7 +25,7 @@ const escapeLdapFilterValue = (value: string): string => {
 
 export const ldapLogin = async (username: string, password: string) => {
   if (!config.ldap.url) {
-    if (username === "demo" && password === "demo") {
+    if (process.env.ALLOW_DEMO_LOGIN === "true" && username === "demo" && password === "demo") {
       return { dn: `cn=${username}`, email: `${username}@example.com` };
     }
     throw new Error("invalid_credentials");
@@ -97,10 +97,6 @@ export const ldapLogin = async (username: string, password: string) => {
   try {
     await client.bind(adminBindDN, adminBindPassword);
   } catch (adminErr: unknown) {
-    if (config.nodeEnv === "development" && username === "demo" && password === "demo") {
-      await client.unbind();
-      return { dn: `cn=${username}`, email: `${username}@example.com` };
-    }
     const parts = searchBase.split(",").map((s) => s.trim());
     const dcs = parts.filter((p) => p.toUpperCase().startsWith("DC=")).map((p) => p.slice(3));
     const domainSuffix = dcs.length ? dcs.join(".") : "";
@@ -221,7 +217,8 @@ export const ldapSearchUsers = async (term: string, limit = 10): Promise<LdapUse
     await client.bind(config.ldap.bindDN, config.ldap.bindPassword);
     const base = config.ldap.userSearchBase || config.ldap.baseDN;
     const safe = escapeLdapFilterValue(term);
-    const filter = `(|(cn=*${safe}*)(mail=*${safe}*)(userPrincipalName=*${safe}*)(sAMAccountName=*${safe}*))`;
+    // Enabled user accounts only (userAccountControl bit 2 = disabled).
+    const filter = `(&(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(|(cn=*${safe}*)(mail=*${safe}*)(userPrincipalName=*${safe}*)(sAMAccountName=*${safe}*)))`;
     const { searchEntries } = await client.search(base, { scope: "sub", filter, sizeLimit: limit });
     const items: LdapUser[] = (searchEntries as Array<Record<string, unknown>>).map((e) => ({
       dn: toFirstString(e.dn) || "",
@@ -250,7 +247,7 @@ export const ldapFindByEmail = async (email: string): Promise<LdapUser | null> =
     await client.bind(config.ldap.bindDN, config.ldap.bindPassword);
     const base = config.ldap.userSearchBase || config.ldap.baseDN;
     const safe = escapeLdapFilterValue(email);
-    const { searchEntries } = await client.search(base, { scope: "sub", filter: `(mail=${safe})`, sizeLimit: 1 });
+    const { searchEntries } = await client.search(base, { scope: "sub", filter: `(&(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(mail=${safe}))`, sizeLimit: 1 });
     const e = (searchEntries[0] as Record<string, unknown> | undefined);
     await client.unbind();
     if (!e) return null;

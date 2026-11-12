@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { Search, Plus, Filter, SortAsc, Users, UserPlus, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X, ListChecks, RefreshCw, Share2, Activity } from 'lucide-react';
+import { Search, Plus, Filter, SortAsc, Users, UserPlus, FileKey, ShieldCheck, Trash2, FolderInput, Star, Download, X, ListChecks, RefreshCw, Share2, Activity, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { VaultSidebar } from '@/components/VaultSidebar';
@@ -9,6 +9,8 @@ import { CreateTeamDialog } from '@/components/CreateTeamDialog';
 import { TeamMembersDialog } from '@/components/TeamMembersDialog';
 import { KdbxImportExportDialog } from '@/components/KdbxImportExportDialog';
 import { ShareVaultDialog } from '@/components/ShareVaultDialog';
+import { VaultAccessDialog, type OwnedVault, type VaultShareItem } from '@/components/VaultAccessDialog';
+import { VaultHistoryDialog, type SnapshotHistoryItem } from '@/components/VaultHistoryDialog';
 import { SecurityDashboard } from '@/components/SecurityDashboard';
 import { NotificationsBell } from '@/components/NotificationsBell';
 import { PasswordEntry, Folder, Team, TeamInvite } from '@/types/vault';
@@ -132,6 +134,16 @@ interface VaultDashboardProps {
   getVaultIdForTeamId: (teamId: string) => string | null;
   getVaultKeyByVaultId: (vaultId: string) => Uint8Array | null;
   isAdmin?: boolean;
+  // Vault access management (owner only)
+  ownedVaults?: OwnedVault[];
+  currentUserId?: string | null;
+  listVaultShares?: (vaultId: string) => Promise<VaultShareItem[] | null>;
+  rotateVaultKey?: (vaultId: string) => Promise<boolean>;
+  revokeShare?: (vaultId: string, shareId: string) => Promise<boolean>;
+  // Version history
+  listVaultHistory?: (vaultId: string) => Promise<SnapshotHistoryItem[] | null>;
+  loadSnapshot?: (vaultId: string, blobId: string) => Promise<VaultSnapshotV1 | null>;
+  restoreSnapshot?: (vaultId: string, blobId: string) => Promise<boolean>;
 }
 
 export function VaultDashboard({
@@ -163,6 +175,14 @@ export function VaultDashboard({
   getVaultIdForTeamId,
   getVaultKeyByVaultId,
   isAdmin,
+  ownedVaults,
+  currentUserId,
+  listVaultShares,
+  rotateVaultKey,
+  revokeShare,
+  listVaultHistory,
+  loadSnapshot,
+  restoreSnapshot,
 }: VaultDashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
@@ -339,6 +359,8 @@ export function VaultDashboard({
   const [bulkCopyUserSuggestions, setBulkCopyUserSuggestions] = useState<Array<{ id: string; email: string; display_name?: string }>>([]);
   const [bulkCopyUserLoading, setBulkCopyUserLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [accessOpen, setAccessOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [shareVaultId, setShareVaultId] = useState<string | null>(null);
   const [shareVaultKey, setShareVaultKey] = useState<Uint8Array | null>(null);
   
@@ -398,12 +420,18 @@ export function VaultDashboard({
   };
 
   const openShareDialog = () => {
-    const vId = selectedTeam ? getVaultIdForTeamId(selectedTeam) : currentVaultId;
+    // Sharing is only for team vaults. Sharing the personal vault would hand its key
+    // (and every personal password) to the recipients. Use "Copy to User" instead.
+    if (!selectedTeam) {
+      toast.error('Personal vault cannot be shared. Select entries and use Copy to User.');
+      return;
+    }
+    const vId = getVaultIdForTeamId(selectedTeam);
     if (!vId) {
       toast.error('Vault not available');
       return;
     }
-    const vKey = selectedTeam ? getVaultKeyByVaultId(vId) : getCurrentVaultKey();
+    const vKey = getVaultKeyByVaultId(vId);
     if (!vKey) {
       toast.error('Vault key unavailable');
       return;
@@ -644,7 +672,7 @@ export function VaultDashboard({
 
       const vaultKey = crypto.getRandomValues(new Uint8Array(32));
       const wrappedForCreator = await sealToRecipient(encPk, vaultKey);
-      const createRes = await post<{ id?: string }>(`/vaults`, { kind: 'personal', version: 1, vault_key_wrapped: wrappedForCreator });
+      const createRes = await post<{ id?: string }>(`/vaults`, { kind: 'personal', purpose: 'transfer', version: 1, vault_key_wrapped: wrappedForCreator });
       const newVaultId = createRes.body?.id || null;
       if (!createRes.ok || !newVaultId) {
         toast.error('Failed to create temporary vault for sharing');
@@ -824,9 +852,16 @@ export function VaultDashboard({
             <Button variant="outline" size="icon">
               <SortAsc className="w-4 h-4" />
             </Button>
-            <Button variant="outline" size="icon" onClick={openShareDialog}>
-              <Share2 className="w-4 h-4" />
-            </Button>
+            {selectedTeam ? (
+              <Button variant="outline" size="icon" onClick={openShareDialog} title="Share team vault">
+                <Share2 className="w-4 h-4" />
+              </Button>
+            ) : listVaultShares && rotateVaultKey && revokeShare ? (
+              <Button variant="outline" onClick={() => setAccessOpen(true)} title="See and revoke who can open your vaults">
+                <ShieldCheck className="w-4 h-4" />
+                Access
+              </Button>
+            ) : null}
             <Button onClick={() => setAddDialogOpen(true)} disabled={selectedTeam ? isTeamReadOnly : false}>
               <Plus className="w-4 h-4" />
               {selectedTeam ? (isTeamReadOnly ? 'Read-only' : 'Share Password') : 'Add Entry'}
@@ -1051,6 +1086,12 @@ export function VaultDashboard({
                       <RefreshCw className="w-4 h-4" />
                       Refresh
                     </Button>
+                    {listVaultHistory && (
+                      <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)} title="See and restore earlier versions of this vault">
+                        <History className="w-4 h-4" />
+                        History
+                      </Button>
+                    )}
                     {filteredEntries.length > 0 && (
                       <Button variant="outline" size="sm" onClick={toggleSelectAllFiltered}>
                         <ListChecks className="w-4 h-4" />
@@ -1181,6 +1222,29 @@ export function VaultDashboard({
                   </div>
         )}
 
+        {listVaultShares && rotateVaultKey && revokeShare && (
+          <VaultAccessDialog
+            open={accessOpen}
+            onOpenChange={setAccessOpen}
+            ownedVaults={ownedVaults ?? []}
+            currentUserId={currentUserId ?? null}
+            listVaultShares={listVaultShares}
+            rotateVaultKey={rotateVaultKey}
+            revokeShare={revokeShare}
+          />
+        )}
+        {listVaultHistory && loadSnapshot && restoreSnapshot && (
+          <VaultHistoryDialog
+            open={historyOpen}
+            onOpenChange={setHistoryOpen}
+            vaultId={selectedTeam ? getVaultIdForTeamId(selectedTeam) : currentVaultId}
+            vaultLabel={selectedTeam ? teams.find((t) => t.id === selectedTeam)?.name ?? 'Team vault' : 'My Vault'}
+            canRestore={selectedTeam ? !isTeamReadOnly : true}
+            listVaultHistory={listVaultHistory}
+            loadSnapshot={loadSnapshot}
+            restoreSnapshot={restoreSnapshot}
+          />
+        )}
         <ShareVaultDialog
           open={shareOpen}
           onOpenChange={(o) => setShareOpen(o)}

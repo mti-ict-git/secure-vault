@@ -88,7 +88,10 @@ export type SyncEvent = {
     | "team_delete"
     | "team_role_update"
     | "team_member_remove"
-    | "vault_share";
+    | "vault_share"
+    | "notification";
+  /** For "notification": only this user receives the event. */
+  target_user_id?: UUID;
   vault_id?: UUID;
   team_id?: UUID;
   member_id?: UUID;

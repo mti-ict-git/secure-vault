@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { CreateVaultSchema } from "../utils/validators.js";
-import { canUserAccessVault, createVault, listVaultsForUser, getVault } from "../repo/vaults.js";
+import { canUserAccessVault, createVault, listVaultsForUser, getVault, hasPrimaryPersonalVault } from "../repo/vaults.js";
 import { getUserRoleInTeam } from "../repo/teams.js";
 import { writeAudit } from "../repo/audit.js";
 import { publishSyncEvent } from "../state/store.js";
@@ -20,7 +20,12 @@ export const vaultRoutes = async (app: FastifyInstance) => {
       }
     }
     const owner = body.kind === "personal" ? userId : null;
-    const id = await createVault(owner, body.team_id || null, body.kind, body.version, body.vault_key_wrapped);
+    let purpose: "primary" | "transfer" = body.kind === "personal" ? body.purpose ?? "primary" : "primary";
+    if (purpose === "primary" && body.kind === "personal" && (await hasPrimaryPersonalVault(userId))) {
+      // A user has exactly one primary personal vault; extra personal vaults are transfer copies.
+      purpose = "transfer";
+    }
+    const id = await createVault(owner, body.team_id || null, body.kind, body.version, body.vault_key_wrapped, purpose);
     await writeAudit(userId, "vault_create", "vault", id, { kind: body.kind });
     publishSyncEvent({ t: Date.now(), type: "vault_create", vault_id: id, team_id: body.team_id, actor_user_id: userId });
     return reply.status(201).send({ id });

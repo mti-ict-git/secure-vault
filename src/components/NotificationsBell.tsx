@@ -1,4 +1,4 @@
-import { Bell, Trash2 } from "lucide-react";
+import { AlertTriangle, Bell, ShieldAlert, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -50,10 +50,26 @@ export function NotificationsBell() {
             <div className="px-4 py-8 text-sm text-muted-foreground">No notifications</div>
           ) : (
             <div className="divide-y">
-              {notifications.slice(0, 10).map((n) => (
-                <div key={n.id} className="px-4 py-3">
+              {notifications.slice(0, 20).map((n) => (
+                <div
+                  key={n.id}
+                  className={
+                    n.severity === "critical"
+                      ? "px-4 py-3 bg-destructive/10"
+                      : n.severity === "warning"
+                        ? "px-4 py-3 bg-amber-500/10"
+                        : "px-4 py-3"
+                  }
+                >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="text-sm text-foreground">{n.message}</div>
+                    <div className="flex items-start gap-2 text-sm text-foreground">
+                      {n.severity === "critical" ? (
+                        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-label="Security alert" />
+                      ) : n.severity === "warning" ? (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-label="Warning" />
+                      ) : null}
+                      <span>{n.message}</span>
+                    </div>
                     <div className="text-xs text-muted-foreground whitespace-nowrap">{formatTime(n.t)}</div>
                   </div>
                 </div>

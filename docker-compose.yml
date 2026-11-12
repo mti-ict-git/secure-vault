@@ -5,6 +5,7 @@ services:
     env_file:
       - ./.env
     environment:
+      NODE_ENV: production
       UPLOAD_STORAGE: db
       BACKEND_PORT: 8084
       RUN_MIGRATIONS: "true"

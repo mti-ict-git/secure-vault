@@ -19,7 +19,7 @@ import {
 
 interface UnlockScreenProps {
   onUnlock: (password: string) => Promise<boolean> | boolean;
-  onResetKeys?: () => Promise<boolean>;
+  onResetKeys?: (adPassword: string) => Promise<boolean>;
 }
 
 export function UnlockScreen({ onUnlock, onResetKeys }: UnlockScreenProps) {
@@ -28,6 +28,8 @@ export function UnlockScreen({ onUnlock, onResetKeys }: UnlockScreenProps) {
   const [error, setError] = useState('');
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,15 +58,18 @@ export function UnlockScreen({ onUnlock, onResetKeys }: UnlockScreenProps) {
 
   const handleResetKeys = async () => {
     if (!onResetKeys) return;
+    if (!resetPassword || resetConfirm !== 'RESET') return;
     setIsResetting(true);
     setError('');
     try {
-      const ok = await onResetKeys();
-      if (!ok) setError('Failed to reset keys. Please try again.');
+      const ok = await onResetKeys(resetPassword);
+      if (!ok) setError('Reset failed. Check your network (AD) password and try again.');
     } catch {
       setError('Failed to reset keys. Please try again.');
     } finally {
       setIsResetting(false);
+      setResetPassword('');
+      setResetConfirm('');
     }
   };
 
@@ -169,12 +174,31 @@ export function UnlockScreen({ onUnlock, onResetKeys }: UnlockScreenProps) {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Reset encryption keys?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This removes your current keys from the server. You will need to set up new keys. Existing encrypted vault data may become inaccessible.
+                        All passwords in your vault will become unreadable with the new keys. Only do this if you have truly lost your master password. Your old keys are archived on the server for recovery by an administrator.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
+                    <div className="space-y-3">
+                      <Input
+                        type="password"
+                        autoComplete="current-password"
+                        placeholder="Your network (AD) password"
+                        value={resetPassword}
+                        onChange={(e) => setResetPassword(e.target.value)}
+                        disabled={isResetting}
+                      />
+                      <Input
+                        placeholder="Type RESET to confirm"
+                        value={resetConfirm}
+                        onChange={(e) => setResetConfirm(e.target.value)}
+                        disabled={isResetting}
+                      />
+                    </div>
                     <AlertDialogFooter>
                       <AlertDialogCancel disabled={isResetting}>Cancel</AlertDialogCancel>
-                      <AlertDialogAction disabled={isResetting} onClick={handleResetKeys}>
+                      <AlertDialogAction
+                        disabled={isResetting || !resetPassword || resetConfirm !== 'RESET'}
+                        onClick={handleResetKeys}
+                      >
                         Reset keys
                       </AlertDialogAction>
                     </AlertDialogFooter>

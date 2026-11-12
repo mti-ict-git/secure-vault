@@ -72,6 +72,8 @@ export const get = <T = unknown>(path: string) => request<T>(path);
 export const post = <T = unknown>(path: string, body: unknown) =>
   request<T>(path, { method: "POST", body: JSON.stringify(body) });
 
+export const del = <T = unknown>(path: string) => request<T>(path, { method: "DELETE" });
+
 export const postForm = async <T = unknown>(path: string, form: FormData): Promise<ApiResponse<T>> =>
   request<T>(path, { method: "POST", body: form });
 
