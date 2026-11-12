@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { ShareSchema } from "../utils/validators.js";
-import { createShare } from "../repo/shares.js";
+import { createShare, deleteShare, getShare, listSharesForVault } from "../repo/shares.js";
 import { writeAudit } from "../repo/audit.js";
 import { getVault, getVaultAccessForUser } from "../repo/vaults.js";
 import { publishSyncEvent } from "../state/store.js";
@@ -41,4 +41,38 @@ export const shareRoutes = async (app: FastifyInstance) => {
     publishSyncEvent({ t: Date.now(), type: "vault_share", vault_id: body.source_vault_id, actor_user_id: actorId });
     return reply.status(201).send({ id });
   });
+
+  // Only the owner of a vault manages who it is shared with.
+  const ownsVault = async (vaultId: string, userId: string) => {
+    const v = (await getVault(vaultId)) as { owner_user_id?: string | null } | null;
+    return !!v && String(v.owner_user_id).toLowerCase() === userId.toLowerCase();
+  };
+
+  app.get("/vault/:vaultId", async (req, reply) => {
+    const userId = req.user?.id;
+    if (!userId) return reply.status(401).send({ error: "unauthorized" });
+    const vaultId = (req.params as { vaultId: string }).vaultId;
+    if (!(await ownsVault(vaultId, userId))) return reply.status(403).send({ error: "forbidden" });
+    const items = await listSharesForVault(vaultId);
+    return reply.send({ items });
+  });
+
+  app.delete("/:id", async (req, reply) => {
+    const userId = req.user?.id;
+    if (!userId) return reply.status(401).send({ error: "unauthorized" });
+    const id = (req.params as { id: string }).id;
+    const share = await getShare(id);
+    if (!share) return reply.status(404).send({ error: "not_found" });
+    if (!(await ownsVault(share.source_vault_id, userId))) return reply.status(403).send({ error: "forbidden" });
+    await deleteShare(id);
+    await writeAudit(userId, "vault_share_revoke", "vault", share.source_vault_id, {
+      share_id: id,
+      target_user_id: share.target_user_id,
+      target_team_id: share.target_team_id,
+    });
+    publishSyncEvent({ t: Date.now(), type: "vault_share", vault_id: share.source_vault_id, actor_user_id: userId });
+    // The revoked user may still hold the old vault key: the client must now rotate it.
+    return reply.send({ ok: true, rotate_required: true });
+  });
 };
+

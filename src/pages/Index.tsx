@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
+import type { OwnedVault } from '@/components/VaultAccessDialog';
 import { UnlockScreen } from '@/components/UnlockScreen';
 import { VaultDashboard } from '@/components/VaultDashboard';
 import { KeySetupDialog } from '@/components/KeySetupDialog';
@@ -33,6 +34,10 @@ const Index = () => {
     getVaultIdForTeamId,
     getVaultKeyByVaultId,
     getPermissionsForTeamId,
+    vaults,
+    listVaultShares,
+    rotateVaultKey,
+    revokeShare,
   } = useVault();
 
   const {
@@ -53,6 +58,19 @@ const Index = () => {
 
   const { user } = useAuth();
   const isAdmin = !!user && (user as { role?: 'user' | 'admin' }).role === 'admin';
+
+  // Vaults this user owns: the primary personal vault and any Copy-to-User copies.
+  const ownedVaults = useMemo<OwnedVault[]>(() => {
+    const me = (user?.id || '').toLowerCase();
+    return vaults
+      .filter((v) => v.kind === 'personal' && (v.is_own_primary === 1 || v.is_own_primary === true || (!!me && (v.owner_user_id || '').toLowerCase() === me)))
+      .map((v) => ({
+        id: v.id,
+        label: v.is_own_primary === 1 || v.is_own_primary === true
+          ? 'My Vault'
+          : `Shared copy${v.created_at ? ` from ${new Date(v.created_at).toLocaleDateString()}` : ''}`,
+      }));
+  }, [vaults, user?.id]);
   const { pushSyncEvent } = useNotifications();
 
   useSyncEvents({
@@ -117,6 +135,11 @@ const Index = () => {
       getVaultIdForTeamId={getVaultIdForTeamId}
       getVaultKeyByVaultId={getVaultKeyByVaultId}
       isAdmin={isAdmin}
+      ownedVaults={ownedVaults}
+      currentUserId={user?.id ?? null}
+      listVaultShares={listVaultShares}
+      rotateVaultKey={rotateVaultKey}
+      revokeShare={revokeShare}
     />
   );
 };

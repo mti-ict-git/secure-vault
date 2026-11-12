@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { PasswordEntry, Folder, VaultState } from '@/types/vault';
-import { get, post, getBinary, postForm } from '@/lib/api';
+import { get, post, del, getBinary, postForm } from '@/lib/api';
 import { decryptVaultSnapshot, encryptVaultSnapshot, deserializeEncryptedSnapshot, serializeEncryptedSnapshot, type VaultSnapshotV1 } from '@/lib/crypto/vault';
 import { openSealed, sealToRecipient } from '@/lib/crypto/box';
 import { decryptPrivateKeys, type PrivateKeysPlain, type EncryptedPrivateKeysV1 } from '@/lib/crypto/privateKeys';
@@ -11,13 +11,18 @@ import type { KdbxImportedEntry, KdbxImportedFolder } from '@/lib/kdbx-utils';
 
 const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
-interface VaultRecord {
+export interface VaultRecord {
   id: string;
   kind: 'personal' | 'team';
   team_id: string | null;
   vault_key_wrapped_for_user: string;
   version: number;
   permissions?: 'read' | 'write';
+  /** Incremented on every key rotation; uploads must name it. */
+  key_version?: number;
+  owner_user_id?: string | null;
+  purpose?: 'primary' | 'transfer';
+  created_at?: string;
   /** 1 when this is the caller's own primary personal vault (not a shared or transfer vault). */
   is_own_primary?: number | boolean;
 }
@@ -516,6 +521,7 @@ export function useVault() {
       blob_type: 'snapshot',
       content_sha256: hashHex,
       size_bytes: bytes.length,
+      key_version: getVaultRecordById(vaultId)?.key_version ?? 1,
     }));
     form.append('file', new Blob([bytesBuffer], { type: 'application/octet-stream' }));
 
@@ -528,6 +534,12 @@ export function useVault() {
         const e = r.error;
         return typeof e === 'string' ? e : undefined;
       })();
+      if (res.status === 409 && err === 'stale_vault_key') {
+        // The vault key was rotated elsewhere; drop the cached key so the next refresh re-derives it.
+        keysRef.current?.vaultKeys.delete(vaultId);
+        toast.error('This vault was re-keyed by its owner. Refresh, then repeat your last change.');
+        return;
+      }
       toast.error(`Failed to save changes (${res.status}${err ? `: ${err}` : ''})`);
     }
   }, [getVaultKeyByVaultId, getVaultRecordById]);
@@ -884,6 +896,110 @@ export function useVault() {
     return true;
   }, [resetInactivityTimer]);
 
+  type VaultShareItem = {
+    id: string;
+    target_user_id: string | null;
+    target_team_id: string | null;
+    permissions: 'read' | 'write';
+    created_at: string;
+    display_name?: string | null;
+    email?: string | null;
+  };
+
+  const listVaultShares = useCallback(async (vaultId: string): Promise<VaultShareItem[] | null> => {
+    const res = await get<{ items: VaultShareItem[] }>(`/shares/vault/${vaultId}`);
+    return res.ok && res.body?.items ? res.body.items : null;
+  }, []);
+
+  /**
+   * Re-key a vault the caller owns: decrypt the latest snapshot with the old key,
+   * encrypt it with a fresh key, and wrap that key for the owner and every
+   * remaining share. Anyone who held the old key loses access to new data.
+   */
+  const rotateVaultKey = useCallback(async (vaultId: string): Promise<boolean> => {
+    const keys = keysRef.current;
+    if (!keys) return false;
+    const vaultsRes = await get<{ items: VaultRecord[] }>('/vaults');
+    const record = vaultsRes.body?.items?.find((v) => v.id === vaultId);
+    if (!vaultsRes.ok || !record) {
+      toast.error('Rotation failed: vault not found');
+      return false;
+    }
+    const oldKey = await openSealed(record.vault_key_wrapped_for_user, keys.privateKeys.enc_pk_b64, keys.privateKeys.enc_sk_b64);
+
+    let snapshot: VaultSnapshotV1 = { v: 1, entries: [], folders: [] };
+    const blobsRes = await get<{ items: { id: string; blob_type: string }[] }>(`/vaults/${vaultId}/blobs`);
+    const latest = blobsRes.body?.items?.find((b) => b.blob_type === 'snapshot');
+    if (latest) {
+      const data = await getBinary(`/vaults/${vaultId}/blobs/${latest.id}`);
+      if (!data.ok) {
+        toast.error('Rotation failed: could not read the current snapshot');
+        return false;
+      }
+      snapshot = await decryptVaultSnapshot(oldKey, deserializeEncryptedSnapshot(data.data));
+    }
+
+    const shares = await listVaultShares(vaultId);
+    if (!shares) {
+      toast.error('Rotation failed: could not list shares');
+      return false;
+    }
+    const newKey = crypto.getRandomValues(new Uint8Array(32));
+    const rewrapped: { share_id: string; wrapped_key: string }[] = [];
+    for (const s of shares) {
+      if (!s.target_user_id) {
+        toast.error('Rotation failed: a team share must be removed first');
+        return false;
+      }
+      const pkRes = await get<{ public_enc_key?: string | null }>(`/users/${s.target_user_id}/public-keys`);
+      const pk = pkRes.body?.public_enc_key;
+      if (!pkRes.ok || !pk) {
+        toast.error(`Rotation failed: ${s.display_name || s.email || 'a recipient'} has no encryption keys`);
+        return false;
+      }
+      rewrapped.push({ share_id: s.id, wrapped_key: await sealToRecipient(pk, newKey) });
+    }
+
+    const encrypted = await encryptVaultSnapshot(newKey, snapshot);
+    const bytes = serializeEncryptedSnapshot(encrypted);
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', buffer));
+    const form = new FormData();
+    form.append('meta', JSON.stringify({
+      expected_key_version: record.key_version ?? 1,
+      vault_key_wrapped: await sealToRecipient(keys.privateKeys.enc_pk_b64, newKey),
+      shares: rewrapped,
+      content_sha256: Array.from(hash).map((b) => b.toString(16).padStart(2, '0')).join(''),
+      size_bytes: bytes.length,
+    }));
+    form.append('file', new Blob([buffer], { type: 'application/octet-stream' }));
+    const res = await postForm<{ ok?: boolean; error?: string }>(`/vaults/${vaultId}/rotate-key`, form);
+    if (!res.ok || !res.body?.ok) {
+      const reason = res.body?.error === 'shares_changed' || res.body?.error === 'stale_key_version'
+        ? 'the vault changed meanwhile, please try again'
+        : `server error ${res.status}`;
+      toast.error(`Rotation failed: ${reason}`);
+      return false;
+    }
+    keys.vaultKeys.set(vaultId, newKey);
+    await refresh();
+    return true;
+  }, [listVaultShares, refresh]);
+
+  /** Revoke one share, then re-key the vault so the revoked user's copy of the key is useless. */
+  const revokeShare = useCallback(async (vaultId: string, shareId: string): Promise<boolean> => {
+    const res = await del<{ ok?: boolean }>(`/shares/${shareId}`);
+    if (!res.ok || !res.body?.ok) {
+      toast.error('Failed to revoke access');
+      return false;
+    }
+    const rotated = await rotateVaultKey(vaultId);
+    if (!rotated) {
+      toast.error('Access was revoked, but the vault key was not rotated. Use "Rotate key" to finish.');
+    }
+    return rotated;
+  }, [rotateVaultKey]);
+
   // Track user activity
   useEffect(() => {
     if (state.isLocked) return;
@@ -916,6 +1032,9 @@ export function useVault() {
     lock,
     refresh,
     resetKeys,
+    listVaultShares,
+    rotateVaultKey,
+    revokeShare,
     undoLastImport,
     addEntry,
     updateEntry,

@@ -1,3 +1,4 @@
+import sql from "mssql";
 import { getPool } from "../db/mssql.js";
 import { uid } from "../state/store.js";
 
@@ -99,4 +100,57 @@ export const hasPrimaryPersonalVault = async (user_id: string) => {
     .input("user_id", user_id)
     .query("SELECT TOP 1 id FROM dbo.vaults WHERE kind='personal' AND owner_user_id=@user_id AND purpose='primary'");
   return r.recordset.length > 0;
+};
+
+/**
+ * Swap a vault to a new key in one transaction: the owner's wrapped key, every
+ * remaining share's wrapped key, and the snapshot re-encrypted with the new key.
+ * Readers therefore never see the new snapshot with an old key or the reverse.
+ */
+export const commitKeyRotation = async (args: {
+  vault_id: string;
+  expected_key_version: number;
+  vault_key_wrapped: string;
+  shares: { share_id: string; wrapped_key: string }[];
+  blob: { id: string; content_sha256: string; storage_kind: "fs" | "db"; storage_ref: string; size_bytes: number; created_by: string };
+}): Promise<{ ok: true; key_version: number } | { ok: false; error: "stale_key_version" }> => {
+  const pool = await getPool();
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    const upd = await new sql.Request(tx)
+      .input("id", args.vault_id)
+      .input("expected", args.expected_key_version)
+      .input("wrapped", args.vault_key_wrapped)
+      .query(
+        "UPDATE dbo.vaults SET vault_key_wrapped=@wrapped, key_version=key_version+1, updated_at=SYSUTCDATETIME() OUTPUT inserted.key_version WHERE id=@id AND key_version=@expected"
+      );
+    if (upd.recordset.length !== 1) {
+      await tx.rollback();
+      return { ok: false, error: "stale_key_version" };
+    }
+    for (const s of args.shares) {
+      await new sql.Request(tx)
+        .input("id", s.share_id)
+        .input("vault_id", args.vault_id)
+        .input("wrapped", s.wrapped_key)
+        .query("UPDATE dbo.shares SET wrapped_key=@wrapped WHERE id=@id AND source_vault_id=@vault_id");
+    }
+    await new sql.Request(tx)
+      .input("id", args.blob.id)
+      .input("vault_id", args.vault_id)
+      .input("sha", args.blob.content_sha256)
+      .input("kind", args.blob.storage_kind)
+      .input("ref", args.blob.storage_ref)
+      .input("size", args.blob.size_bytes)
+      .input("by", args.blob.created_by)
+      .query(
+        "INSERT INTO dbo.vault_blobs (id,vault_id,blob_type,content_sha256,storage_kind,storage_ref,size_bytes,created_by,created_at) VALUES (@id,@vault_id,'snapshot',@sha,@kind,@ref,@size,@by,SYSUTCDATETIME())"
+      );
+    await tx.commit();
+    return { ok: true, key_version: Number(upd.recordset[0].key_version) };
+  } catch (e) {
+    await tx.rollback();
+    throw e;
+  }
 };
